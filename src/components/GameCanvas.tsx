@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { soundManager } from '../utils/SoundManager';
 import type { GameResult, GameMode, StageTheme } from '../types';
 
@@ -124,6 +124,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const callbacksRef = useRef({ onGameOver, onGameClear });
+  const [muted, setMuted] = useState(() => soundManager.isMuted());
+
+  const toggleMute = () => {
+    const next = !soundManager.isMuted();
+    soundManager.setMuted(next);
+    setMuted(next);
+  };
 
   useEffect(() => {
     callbacksRef.current = { onGameOver, onGameClear };
@@ -161,11 +168,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       const groundPoints: {x: number, y: number}[] = [{ x: startX, y: startY }];
       const loops: {x: number, y: number, radius: number}[] = [];
       const springs: {x: number, y: number, width: number, height: number, power: number}[] = [];
-      const enemies: {x: number, y: number, width: number, height: number, vx: number, isDead: boolean, startX: number}[] = [];
+      const enemies: {x: number, y: number, width: number, height: number, vx: number, vy: number, isDead: boolean, startX: number, type: 'slime' | 'bouncer' | 'charger' | 'aerial', phase: number}[] = [];
       const rings: {x: number, y: number, radius: number, collected: boolean}[] = [];
       const dashPanels: {x: number, y: number, width: number, height: number, direction: number}[] = [];
       const spikes: {x: number, y: number, width: number, height: number}[] = [];
       const platforms: {x: number, y: number, width: number, height: number}[] = [];
+      const movingPlatforms: {x: number, y: number, width: number, height: number, vx: number, minX: number, maxX: number}[] = [];
 
       let cx = startX;
       let cy = startY;
@@ -237,7 +245,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           // Enemy horde
           makeFlat(1000);
           for (let i=0; i<12; i++) {
-              enemies.push({ x: cx - 800 + i * 60, y: cy - 32, width: 32, height: 32, vx: -2, isDead: false, startX: cx - 800 + i * 60 });
+              const eType = i % 3 === 0 ? 'bouncer' : i % 3 === 1 ? 'charger' : 'slime';
+              enemies.push({ x: cx - 800 + i * 60, y: cy - 32, width: 32, height: 32, vx: -2, vy: 0, isDead: false, startX: cx - 800 + i * 60, type: eType, phase: i * 10 });
           }
         } else if (r < 0.30) {
           // Upper route
@@ -269,7 +278,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
              rings.push({ x: rx, y: ry, radius: 10, collected: false });
           }
           if (Math.random() > 0.5) {
-             enemies.push({ x: cx + len / 2, y: cy - height - 32, width: 32, height: 32, vx: -2, isDead: false, startX: cx + len / 2 });
+             enemies.push({ x: cx + len / 2, y: cy - height - 32, width: 32, height: 32, vx: -2, vy: 0, isDead: false, startX: cx + len / 2, type: 'aerial', phase: 0 });
           }
           makeHill(len, height);
         } else if (r < 0.65) {
@@ -298,6 +307,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           springs.push({ x: cx - 50, y: cy - 20, width: 32, height: 20, power: -18 });
           makeGap(300 + Math.random() * 200);
           makeFlat(200);
+        } else if (r < 0.97) {
+          // Moving platforms
+          makeFlat(400);
+          const baseY = cy - 100;
+          for (let i = 0; i < 3; i++) {
+            const px = cx + i * 260 + 80;
+            const travel = 100 + Math.random() * 100;
+            movingPlatforms.push({ x: px, y: baseY - (i % 2) * 40, width: 120, height: 20, vx: 1.5 * (i % 2 === 0 ? 1 : -1), minX: px - travel / 2, maxX: px + travel / 2 });
+            rings.push({ x: px + 60, y: baseY - (i % 2) * 40 - 30, radius: 10, collected: false });
+          }
+          makeFlat(800);
         } else {
           // Spikes
           makeFlat(300);
@@ -309,12 +329,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       // End area
       makeFlat(1000);
 
-      return { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms, levelWidth: cx };
+      return { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms, movingPlatforms, levelWidth: cx };
     };
 
     const level = generateLevel(15000);
-    const { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms } = level;
+    const { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms, movingPlatforms } = level;
     const particles: {x: number, y: number, vx: number, vy: number, life: number, maxLife: number, size: number}[] = [];
+    // Bosses spawn every 5000px (starting at x=5000 in normal mode)
+    const bossSpawnPositions = gameMode === 'normal' ? [5000, 10000] : [];
+    const bosses: {x: number, y: number, width: number, height: number, hp: number, maxHp: number, vx: number, isDead: boolean, phase: number, chargeTimer: number, startX: number}[] = [];
+    bossSpawnPositions.forEach(bx => {
+      const by = getGroundY(bx) - 80;
+      bosses.push({ x: bx, y: by, width: 80, height: 80, hp: 5, maxHp: 5, vx: -2, isDead: false, phase: 0, chargeTimer: 0, startX: bx });
+    });
+    let bossActive = false;
 
     const getGroundY = (x: number) => {
       if (x <= groundPoints[0].x) return groundPoints[0].y;
@@ -367,7 +395,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       rings: 0,
       frameX: 0,
       tick: 0,
-      jumpsRemaining: 2
+      jumpsRemaining: 2,
+      isSuper: false,
+      superFlashTimer: 0
     };
 
     const keys = keysRef.current;
@@ -376,6 +406,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
     let isGameOver = false;
     let gameTime = 0; // frame counter (60fps = 1s)
     let distanceTraveled = 0; // for infinite mode
+    let damageFlashTimer = 0; // red flash on hit
+    let shakeTimer = 0; // screen shake on hit
 
     const buildResult = (): GameResult => {
       const timeSeconds = Math.floor(gameTime / 60);
@@ -393,7 +425,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
     const handleKeyUp = (e: KeyboardEvent) => { keys[e.key] = false; };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('pointerdown', () => soundManager.init());
+    window.addEventListener('pointerdown', () => { soundManager.init(); soundManager.playBGM(stageTheme); });
 
     const update = () => {
       if (isGameOver) return;
@@ -401,6 +433,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       gameTime++;
       if (gameMode === 'infinite') {
         distanceTraveled = Math.max(distanceTraveled, player.x);
+      }
+
+      // Super state: 50+ rings
+      const wasSuper = player.isSuper;
+      player.isSuper = player.rings >= 50;
+      if (player.isSuper) {
+        player.superFlashTimer = (player.superFlashTimer + 1) % 12;
+        player.maxSpeed = 22;
+        player.invincibleTimer = Math.max(player.invincibleTimer, 2); // always slightly invincible
+      } else {
+        player.maxSpeed = 15;
+        if (wasSuper) player.superFlashTimer = 0;
       }
 
       if (!Number.isFinite(player.x)) player.x = 100;
@@ -616,6 +660,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           }
         }
 
+        // Moving platforms update + collision
+        movingPlatforms.forEach(mp => {
+          mp.x += mp.vx;
+          if (mp.x <= mp.minX || mp.x + mp.width >= mp.maxX) mp.vx *= -1;
+
+          if (player.x + player.width > mp.x && player.x < mp.x + mp.width) {
+            if (player.vy >= 0 && player.y + player.height - player.vy <= mp.y + 20) {
+              player.y = mp.y - player.height;
+              player.vy = 0;
+              player.isGrounded = true;
+              player.jumpsRemaining = 2;
+              player.isRolling = false;
+              player.x += mp.vx; // carry player with platform
+            }
+          }
+        });
+
         // Spring collision
         springs.forEach(spring => {
           if (
@@ -672,9 +733,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
                 player.vx = player.vx > 0 ? -6 : 6;
                 player.isRolling = false;
                 player.invincibleTimer = 120;
-                soundManager.playDamage();
+                damageFlashTimer = 12;
+                shakeTimer = 18;
+                soundManager.playRingScatter();
               } else {
                 isGameOver = true;
+                soundManager.stopBGM();
                 callbacksRef.current.onGameOver(buildResult());
               }
             }
@@ -732,12 +796,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         ext.dashPanels.forEach(d => level.dashPanels.push(d));
         ext.spikes.forEach(s => level.spikes.push(s));
         ext.platforms.forEach(p => level.platforms.push(p));
+        ext.movingPlatforms.forEach(p => level.movingPlatforms.push(p));
         level.levelWidth = ext.levelWidth;
       }
 
       // Goal condition (normal mode only)
       if (gameMode === 'normal' && player.x > level.levelWidth - 100) {
         isGameOver = true;
+        soundManager.playGoal();
+        soundManager.stopBGM();
         callbacksRef.current.onGameClear(buildResult());
       }
 
@@ -758,11 +825,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       // Enemies update & collision
       enemies.forEach(enemy => {
         if (enemy.isDead) return;
+        enemy.phase++;
 
-        enemy.x += enemy.vx;
-        enemy.y = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
-        if (Math.abs(enemy.x - enemy.startX) > 100) {
-          enemy.vx *= -1;
+        if (enemy.type === 'aerial') {
+          // Aerial: fixed height, sine wave y
+          enemy.x += enemy.vx;
+          enemy.y = getGroundY(enemy.startX + enemy.width / 2) - 120 + Math.sin(enemy.phase * 0.08) * 30;
+          if (Math.abs(enemy.x - enemy.startX) > 150) enemy.vx *= -1;
+        } else if (enemy.type === 'bouncer') {
+          // Bouncer: moves side to side, bounces vertically
+          enemy.x += enemy.vx;
+          enemy.vy += 0.4;
+          enemy.y += enemy.vy;
+          const gY = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
+          if (enemy.y >= gY) { enemy.y = gY; enemy.vy = -9; }
+          if (Math.abs(enemy.x - enemy.startX) > 120) enemy.vx *= -1;
+        } else if (enemy.type === 'charger') {
+          // Charger: rushes at player when within 300px
+          const dist = player.x - enemy.x;
+          if (Math.abs(dist) < 300) {
+            enemy.vx += (dist > 0 ? 1 : -1) * 0.4;
+            enemy.vx = Math.max(-6, Math.min(6, enemy.vx));
+          } else {
+            enemy.vx *= 0.95;
+            if (Math.abs(enemy.x - enemy.startX) > 100) enemy.vx = (enemy.startX - enemy.x) * 0.05;
+          }
+          enemy.x += enemy.vx;
+          enemy.y = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
+        } else {
+          // Normal slime
+          enemy.x += enemy.vx;
+          enemy.y = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
+          if (Math.abs(enemy.x - enemy.startX) > 100) enemy.vx *= -1;
         }
 
         if (
@@ -785,7 +879,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
               player.vx = player.vx > 0 ? -6 : 6;
               player.isRolling = false;
               player.invincibleTimer = 120;
-              soundManager.playDamage();
+              damageFlashTimer = 12;
+              soundManager.playRingScatter();
             } else {
               isGameOver = true;
               callbacksRef.current.onGameOver(buildResult());
@@ -793,6 +888,70 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           }
         }
       });
+
+      // Boss update & collision
+      let anyBossAlive = false;
+      bosses.forEach(boss => {
+        if (boss.isDead) return;
+        // Only activate when player is within 600px
+        if (Math.abs(player.x - boss.startX) > 600) return;
+        anyBossAlive = true;
+        boss.phase++;
+        boss.chargeTimer = Math.max(0, boss.chargeTimer - 1);
+
+        // Movement: patrol + occasional charge
+        if (boss.chargeTimer > 0) {
+          boss.x += boss.vx * 3;
+        } else {
+          boss.x += boss.vx;
+          if (Math.abs(boss.x - boss.startX) > 200) boss.vx *= -1;
+          if (boss.phase % 150 === 0) {
+            boss.vx = (player.x > boss.x ? 4 : -4);
+            boss.chargeTimer = 30;
+          }
+        }
+        boss.y = getGroundY(boss.x + boss.width / 2) - boss.height;
+
+        // Collision with player
+        if (player.x < boss.x + boss.width && player.x + player.width > boss.x &&
+            player.y < boss.y + boss.height && player.y + player.height > boss.y) {
+          const isSpinning = !player.isGrounded || player.isRolling || player.isSpindashing || player.isLooping;
+          if (isSpinning && player.invincibleTimer <= 0) {
+            boss.hp--;
+            player.vy = player.jumpPower * 0.9;
+            player.invincibleTimer = 60;
+            damageFlashTimer = 8;
+            shakeTimer = 12;
+            soundManager.playDamage();
+            if (boss.hp <= 0) {
+              boss.isDead = true;
+              // Drop rings
+              for (let i = 0; i < 8; i++) {
+                rings.push({ x: boss.x + i * 12 - 40, y: boss.y - 20, radius: 10, collected: false });
+              }
+              soundManager.playGoal();
+            }
+          } else if (!isSpinning && player.invincibleTimer <= 0) {
+            if (player.rings > 0) {
+              player.rings = 0;
+              player.vy = -10; player.vx = player.vx > 0 ? -8 : 8;
+              player.invincibleTimer = 120;
+              damageFlashTimer = 12; shakeTimer = 18;
+              soundManager.playRingScatter();
+            } else {
+              isGameOver = true;
+              soundManager.stopBGM();
+              callbacksRef.current.onGameOver(buildResult());
+            }
+          }
+        }
+      });
+
+      // Switch BGM on boss encounter
+      if (anyBossAlive !== bossActive) {
+        bossActive = anyBossAlive;
+        soundManager.playBGM(bossActive ? 'boss' : stageTheme);
+      }
 
       prevKeys = { ...keys, jump: isUp };
     };
@@ -812,7 +971,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       ctx.fillStyle = skyFallback;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      // Screen shake
+      let shakeX = 0, shakeY = 0;
+      if (shakeTimer > 0) {
+        shakeTimer--;
+        shakeX = (Math.random() - 0.5) * 8;
+        shakeY = (Math.random() - 0.5) * 8;
+      }
+
       ctx.save();
+      if (shakeX !== 0 || shakeY !== 0) ctx.translate(shakeX, shakeY);
       ctx.scale(zoom, zoom);
 
       // Draw Parallax Background
@@ -864,6 +1032,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           ctx.fillStyle = '#228B22';
           ctx.fillRect(plat.x, plat.y, plat.width, 5);
         }
+      });
+
+      // Draw Moving Platforms
+      movingPlatforms.forEach(mp => {
+        ctx.fillStyle = '#2299FF';
+        ctx.fillRect(mp.x, mp.y, mp.width, mp.height);
+        ctx.fillStyle = '#66CCFF';
+        ctx.fillRect(mp.x, mp.y, mp.width, 5);
+        // Arrow indicating direction
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(mp.vx > 0 ? '→' : '←', mp.x + mp.width / 2, mp.y + 14);
+        ctx.textAlign = 'left';
       });
 
       // Draw Goal (normal mode only)
@@ -949,39 +1131,72 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       // Draw Enemies
       enemies.forEach(enemy => {
         if (!enemy.isDead) {
+          const typeColor = enemy.type === 'bouncer' ? '#FF8800' : enemy.type === 'charger' ? '#DD0033' : enemy.type === 'aerial' ? '#8844FF' : '#FF0000';
           if (enemyImg.complete && enemyImg.naturalWidth > 0) {
             const frames = Math.max(1, Math.floor(enemyImg.naturalWidth / enemyImg.naturalHeight));
             const frameWidth = enemyImg.naturalWidth / frames;
             const currentFrame = Math.floor(Date.now() / 200) % frames;
-
             ctx.save();
-            if (enemy.vx > 0) {
-              // Flip horizontally if moving right
-              ctx.translate(enemy.x + enemy.width, enemy.y);
-              ctx.scale(-1, 1);
-              ctx.drawImage(
-                enemyImg,
-                currentFrame * frameWidth, 0, frameWidth, enemyImg.naturalHeight,
-                0, 0, enemy.width, enemy.height
-              );
-            } else {
-              ctx.drawImage(
-                enemyImg,
-                currentFrame * frameWidth, 0, frameWidth, enemyImg.naturalHeight,
-                enemy.x, enemy.y, enemy.width, enemy.height
-              );
+            // Tint for non-slime types via colorize overlay
+            ctx.translate(enemy.x + (enemy.vx > 0 ? enemy.width : 0), enemy.y);
+            if (enemy.vx > 0) ctx.scale(-1, 1);
+            ctx.drawImage(enemyImg, currentFrame * frameWidth, 0, frameWidth, enemyImg.naturalHeight, 0, 0, enemy.width, enemy.height);
+            if (enemy.type !== 'slime') {
+              ctx.globalAlpha = 0.4;
+              ctx.fillStyle = typeColor;
+              ctx.fillRect(0, 0, enemy.width, enemy.height);
+              ctx.globalAlpha = 1;
             }
             ctx.restore();
           } else {
-            ctx.fillStyle = '#FF0000'; // Red badniks
+            ctx.fillStyle = typeColor;
             ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-            // Eyes
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(enemy.x + (enemy.vx > 0 ? 20 : 4), enemy.y + 8, 8, 8);
             ctx.fillStyle = '#000000';
             ctx.fillRect(enemy.x + (enemy.vx > 0 ? 24 : 4), enemy.y + 10, 4, 4);
           }
+          // Type label
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '8px sans-serif';
+          ctx.textAlign = 'center';
+          const label = enemy.type === 'bouncer' ? 'B' : enemy.type === 'charger' ? 'C' : enemy.type === 'aerial' ? 'A' : '';
+          if (label) ctx.fillText(label, enemy.x + enemy.width / 2, enemy.y - 3);
+          ctx.textAlign = 'left';
         }
+      });
+
+      // Draw Bosses
+      bosses.forEach(boss => {
+        if (boss.isDead || Math.abs(player.x - boss.startX) > 800) return;
+        // Body
+        const bFlash = Math.floor(boss.phase / 5) % 2 === 0 || boss.chargeTimer > 0;
+        ctx.fillStyle = bFlash ? '#FF4444' : '#AA0000';
+        ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+        // Eyes
+        ctx.fillStyle = '#FFFF00';
+        ctx.fillRect(boss.x + 12, boss.y + 16, 18, 18);
+        ctx.fillRect(boss.x + 50, boss.y + 16, 18, 18);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(boss.x + 18, boss.y + 22, 8, 8);
+        ctx.fillRect(boss.x + 56, boss.y + 22, 8, 8);
+        // Mouth
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(boss.x + 16, boss.y + 50, 48, 10);
+        // HP bar
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(boss.x, boss.y - 14, boss.width, 8);
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(boss.x, boss.y - 14, boss.width * (boss.hp / boss.maxHp), 8);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(boss.x, boss.y - 14, boss.width, 8);
+        // BOSS label
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('BOSS', boss.x + boss.width / 2, boss.y - 18);
+        ctx.textAlign = 'left';
       });
 
       // Draw Particles
@@ -1004,6 +1219,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         
         ctx.save();
         ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+
+        // Super aura
+        if (player.isSuper) {
+          const pulse = Math.sin(player.superFlashTimer * Math.PI / 6) * 0.5 + 0.5;
+          ctx.beginPath();
+          ctx.arc(0, 0, 32 + pulse * 8, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(255, 230, 0, ${0.5 + pulse * 0.4})`;
+          ctx.lineWidth = 4 + pulse * 3;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, 0, 22 + pulse * 4, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(255, 255, 180, ${0.3 + pulse * 0.3})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
 
         // Draw Spindash Aura
         if (player.spindashCharge > 0) {
@@ -1107,9 +1337,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       ctx.font = 'bold 20px "JetBrains Mono", monospace';
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 3;
-      ctx.fillStyle = '#FFD700';
+      ctx.fillStyle = player.isSuper ? '#FFD700' : '#FFD700';
       ctx.strokeText(`RINGS: ${player.rings}`, 16, 34);
       ctx.fillText(`RINGS: ${player.rings}`, 16, 34);
+
+      if (player.isSuper) {
+        const superPulse = Math.sin(Date.now() / 120) * 0.5 + 0.5;
+        ctx.font = 'bold 18px "JetBrains Mono", monospace';
+        ctx.fillStyle = `rgba(255, ${Math.floor(200 + superPulse * 55)}, 0, 1)`;
+        ctx.strokeText('★ SUPER ★', 16, 56);
+        ctx.fillText('★ SUPER ★', 16, 56);
+        ctx.font = 'bold 20px "JetBrains Mono", monospace';
+      }
 
       ctx.fillStyle = '#AADDFF';
       ctx.strokeText(`TIME: ${hudMin}:${hudSec}`, 16, 60);
@@ -1124,6 +1363,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         const dist = Math.floor(distanceTraveled / 10);
         ctx.strokeText(`DIST: ${dist.toLocaleString()}m`, 16, 112);
         ctx.fillText(`DIST: ${dist.toLocaleString()}m`, 16, 112);
+      }
+
+      // Damage flash overlay
+      if (damageFlashTimer > 0) {
+        damageFlashTimer--;
+        ctx.save();
+        ctx.globalAlpha = (damageFlashTimer / 12) * 0.45;
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
       }
     };
 
@@ -1167,11 +1416,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       cancelAnimationFrame(animationFrameId);
+      soundManager.stopBGM();
     };
   }, []);
 
   return (
     <div className="relative w-full max-w-[800px] mx-auto touch-none select-none">
+      {/* Mute button */}
+      <button
+        onClick={toggleMute}
+        className="absolute top-3 right-3 z-50 w-10 h-10 bg-zinc-900/80 hover:bg-zinc-700 rounded-full flex items-center justify-center text-white text-lg pointer-events-auto border border-zinc-600 transition-all"
+        title={muted ? 'ミュート解除' : 'ミュート'}
+      >
+        {muted ? '🔇' : '🔊'}
+      </button>
       <canvas
         ref={canvasRef}
         width={800}
