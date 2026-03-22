@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { GameMode, StageTheme } from '../types';
 
 const generateBg = (): HTMLCanvasElement => {
   const canvas = document.createElement('canvas');
@@ -35,13 +36,21 @@ const generateBg = (): HTMLCanvasElement => {
 };
 
 interface TitleSceneProps {
-  onGameStart: () => void;
+  onGameStart: (mode: GameMode, theme: StageTheme) => void;
 }
+
+const THEME_LABELS: Record<StageTheme, { label: string; color: string; desc: string }> = {
+  normal: { label: '緑の丘', color: '#60A5FA', desc: '青空と緑の草原' },
+  desert: { label: '砂漠', color: '#FBBF24', desc: '灼熱の砂漠地帯' },
+  night: { label: '夜', color: '#818CF8', desc: '星降る夜のステージ' },
+};
 
 export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isStartingRef = useRef(false);
-  const [clicked, setClicked] = useState(false);
+  const [step, setStep] = useState<'title' | 'mode' | 'theme'>('title');
+  const [selectedMode, setSelectedMode] = useState<GameMode>('normal');
+  const [selectedTheme, setSelectedTheme] = useState<StageTheme>('normal');
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -73,7 +82,6 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw tiled parallax background scaled to canvas width
       ctx.imageSmoothingEnabled = false;
       const bgW = canvas.width;
       const bgH = Math.ceil(180 * (canvas.width / 320));
@@ -84,19 +92,17 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
       ctx.drawImage(bgCanvas, -bx + bgW, 0, bgW, bgH);
       ctx.imageSmoothingEnabled = true;
 
-      // Ground strip
       ctx.fillStyle = '#8B4513';
       ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
       ctx.fillStyle = '#228B22';
       ctx.fillRect(0, GROUND_Y - 12, canvas.width, 12);
 
-      // Update player position
       if (starting) {
         playerVx = Math.min(playerVx + 0.5, 26);
         playerX += playerVx;
         if (playerX > canvas.width + W * 2) {
           isActive = false;
-          onGameStart();
+          onGameStart(selectedMode, selectedTheme);
           return;
         }
       } else {
@@ -104,12 +110,10 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
         if (playerX > canvas.width * 0.68) playerX = canvas.width * 0.22;
       }
 
-      // Animation frame advance
       tick++;
       const frameRate = starting ? Math.max(1, 6 - Math.floor(playerVx / 4)) : 5;
       if (tick >= frameRate) { frameX++; tick = 0; }
 
-      // Speed-blur ghost trails when launching
       if (starting && playerVx > 10 && playerImg.complete && playerImg.naturalWidth > 0) {
         const frames = Math.max(1, Math.floor(playerImg.naturalWidth / playerImg.naturalHeight));
         const fw = playerImg.naturalWidth / frames;
@@ -123,7 +127,6 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
         }
       }
 
-      // Draw player
       ctx.save();
       ctx.translate(playerX + W / 2, GROUND_Y - H / 2);
       if (playerImg.complete && playerImg.naturalWidth > 0) {
@@ -140,10 +143,9 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
 
     animId = requestAnimationFrame(loop);
     return () => { isActive = false; cancelAnimationFrame(animId); };
-  }, [onGameStart]);
+  }, [onGameStart, selectedMode, selectedTheme]);
 
   const handleStart = () => {
-    setClicked(true);
     isStartingRef.current = true;
   };
 
@@ -176,8 +178,10 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
       </div>
 
       {/* Bottom UI */}
-      <div className="absolute inset-x-0 bottom-6 flex flex-col items-center gap-4 px-4">
-        {!clicked ? (
+      <div className="absolute inset-x-0 bottom-6 flex flex-col items-center gap-3 px-4">
+
+        {/* STEP: title — 操作説明 + モード選択へ */}
+        {step === 'title' && (
           <>
             <div className="bg-zinc-900/80 backdrop-blur-sm rounded-xl border border-zinc-700 px-5 py-3 text-sm text-zinc-300 grid grid-cols-2 gap-x-8 gap-y-1 max-w-lg w-full">
               <span><span className="text-yellow-400 font-bold">←→ / A D</span>　移動</span>
@@ -186,20 +190,65 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
               <span><span className="text-red-400 font-bold">赤い敵</span>　踏んで倒せ！</span>
             </div>
             <button
-              onClick={handleStart}
+              onClick={() => setStep('mode')}
               className="pointer-events-auto px-12 py-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-full font-black text-2xl transition-all shadow-xl shadow-blue-900/60 border-4 border-blue-400/30 hover:scale-105 active:scale-95"
               style={{ textShadow: '2px 2px 0 #1E3A5F' }}
             >
               ▶ ゲームスタート
             </button>
           </>
-        ) : (
-          <p
-            className="text-4xl font-black animate-pulse select-none"
-            style={{ color: '#FCD34D', textShadow: '0 0 20px #FBBF24, 0 0 40px #F59E0B' }}
-          >
-            GO！！
-          </p>
+        )}
+
+        {/* STEP: mode selection */}
+        {step === 'mode' && (
+          <div className="flex flex-col items-center gap-3 w-full max-w-md pointer-events-auto">
+            <p className="text-zinc-300 font-bold text-lg tracking-widest">モードを選んでください</p>
+            <div className="flex gap-4 w-full">
+              {(['normal', 'infinite'] as GameMode[]).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => { setSelectedMode(mode); setStep('theme'); }}
+                  className={`flex-1 py-4 rounded-2xl font-black text-xl border-2 transition-all hover:scale-105 ${
+                    mode === 'normal'
+                      ? 'bg-blue-700/80 border-blue-400 text-white shadow-lg shadow-blue-900/50'
+                      : 'bg-purple-700/80 border-purple-400 text-white shadow-lg shadow-purple-900/50'
+                  }`}
+                >
+                  {mode === 'normal' ? '🏁 ノーマル' : '∞ 無限ラン'}
+                  <div className="text-xs font-normal mt-1 opacity-75">
+                    {mode === 'normal' ? 'ゴールを目指す' : 'どこまでも走る'}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setStep('title')} className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors">← 戻る</button>
+          </div>
+        )}
+
+        {/* STEP: theme selection */}
+        {step === 'theme' && (
+          <div className="flex flex-col items-center gap-3 w-full max-w-lg pointer-events-auto">
+            <p className="text-zinc-300 font-bold text-lg tracking-widest">ステージを選んでください</p>
+            <div className="flex gap-3 w-full">
+              {(Object.keys(THEME_LABELS) as StageTheme[]).map(theme => (
+                <button
+                  key={theme}
+                  onClick={() => { setSelectedTheme(theme); handleStart(); }}
+                  className={`flex-1 py-3 rounded-2xl font-black text-base border-2 transition-all hover:scale-105`}
+                  style={{
+                    background: theme === 'normal' ? 'rgba(59,130,246,0.7)' : theme === 'desert' ? 'rgba(217,119,6,0.7)' : 'rgba(79,70,229,0.7)',
+                    borderColor: THEME_LABELS[theme].color,
+                    color: '#fff',
+                    textShadow: '1px 1px 0 #000',
+                  }}
+                >
+                  {THEME_LABELS[theme].label}
+                  <div className="text-xs font-normal mt-1 opacity-80">{THEME_LABELS[theme].desc}</div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setStep('mode')} className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors">← 戻る</button>
+          </div>
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
+import type { GameResult } from '../types';
 
 interface Particle {
   x: number; y: number; vx: number; vy: number;
@@ -8,13 +9,20 @@ interface Particle {
 }
 
 interface ClearSceneProps {
+  result: GameResult | null;
   onRetry: () => void;
   onMenu: () => void;
 }
 
 const COLORS = ['#FFD700', '#FFF176', '#FFAB40', '#FFFFFF', '#60CDFF', '#FF80AB', '#69FF47', '#FCD34D'];
 
-export const ClearScene: React.FC<ClearSceneProps> = ({ onRetry, onMenu }) => {
+function formatTime(s: number) {
+  const m = Math.floor(s / 60).toString().padStart(2, '0');
+  const sec = (s % 60).toString().padStart(2, '0');
+  return `${m}:${sec}`;
+}
+
+export const ClearScene: React.FC<ClearSceneProps> = ({ result, onRetry, onMenu }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -62,7 +70,6 @@ export const ClearScene: React.FC<ClearSceneProps> = ({ onRetry, onMenu }) => {
       ctx.fill();
     };
 
-    // Initial triple burst
     spawnBurst(canvas.width * 0.3);
     spawnBurst(canvas.width * 0.5);
     spawnBurst(canvas.width * 0.7);
@@ -132,19 +139,43 @@ export const ClearScene: React.FC<ClearSceneProps> = ({ onRetry, onMenu }) => {
           </h1>
           <p className="text-zinc-300 text-lg mt-3">見事ゴールに到達した！</p>
         </div>
+
+        {result && (
+          <div className="bg-zinc-900/80 border border-yellow-700/50 rounded-2xl px-8 py-4 flex gap-8 justify-center text-center">
+            <div>
+              <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">RINGS</div>
+              <div className="text-yellow-400 text-3xl font-black">{result.rings}</div>
+            </div>
+            <div>
+              <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">TIME</div>
+              <div className="text-blue-400 text-3xl font-black">{formatTime(result.timeSeconds)}</div>
+            </div>
+            <div>
+              <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">SCORE</div>
+              <div className="text-white text-3xl font-black">{result.score.toLocaleString()}</div>
+            </div>
+            {result.distance !== undefined && (
+              <div>
+                <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">DISTANCE</div>
+                <div className="text-green-400 text-3xl font-black">{result.distance.toLocaleString()}m</div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button
             onClick={onRetry}
             className="px-8 py-4 bg-zinc-800/90 hover:bg-zinc-700 text-white rounded-full font-bold text-lg border border-zinc-600 transition-all hover:scale-105 flex items-center gap-2 justify-center backdrop-blur-sm"
           >
-            <RefreshCw size={20} /> 同じステージでもう一度
+            <RefreshCw size={20} /> もう一度
           </button>
           <button
             onClick={onMenu}
             className="px-8 py-4 bg-blue-600/90 hover:bg-blue-500 text-white rounded-full font-bold text-lg transition-all hover:scale-105 shadow-lg shadow-blue-900/50 flex items-center gap-2 justify-center backdrop-blur-sm"
             style={{ textShadow: '2px 2px 0 #1E3A5F' }}
           >
-            新しいステージへ
+            タイトルへ
           </button>
         </div>
       </div>

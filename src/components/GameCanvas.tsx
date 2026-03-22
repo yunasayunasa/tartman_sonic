@@ -1,59 +1,126 @@
 import React, { useEffect, useRef } from 'react';
 import { soundManager } from '../utils/SoundManager';
+import type { GameResult, GameMode, StageTheme } from '../types';
 
 interface GameCanvasProps {
-  onGameOver: () => void;
-  onGameClear: () => void;
+  onGameOver: (result: GameResult) => void;
+  onGameClear: (result: GameResult) => void;
+  gameMode: GameMode;
+  stageTheme: StageTheme;
 }
 
-const generatePixelBackground = (): HTMLCanvasElement => {
+const generatePixelBackground = (theme: 'normal' | 'desert' | 'night'): HTMLCanvasElement => {
   const canvas = document.createElement('canvas');
   canvas.width = 320;
   canvas.height = 180;
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
 
-  // Sky gradient
-  for (let y = 0; y < 180; y += 4) {
-    const ratio = y / 180;
-    const r = Math.floor(74 + (135 - 74) * ratio);
-    const g = Math.floor(144 + (206 - 144) * ratio);
-    const b = Math.floor(226 + (235 - 226) * ratio);
-    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-    ctx.fillRect(0, y, 320, 4);
-  }
-
-  // Clouds
-  ctx.fillStyle = '#ffffff';
-  const drawCloud = (cx: number, cy: number, w: number) => {
-    for (let x = cx; x < cx + w; x += 4) {
-      const h = Math.abs(Math.sin((x - cx) / w * Math.PI)) * 16;
-      ctx.fillRect(x, cy - h, 4, h * 2);
+  if (theme === 'night') {
+    // Night sky gradient
+    for (let y = 0; y < 180; y += 4) {
+      const ratio = y / 180;
+      const r = Math.floor(5 + 20 * ratio);
+      const g = Math.floor(5 + 15 * ratio);
+      const b = Math.floor(30 + 40 * ratio);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(0, y, 320, 4);
     }
-  };
-  drawCloud(20, 40, 60);
-  drawCloud(150, 60, 80);
-  drawCloud(260, 30, 50);
-  drawCloud(330, 50, 70);
-
-  // Distant Mountains
-  ctx.fillStyle = '#5c7a99';
-  for (let i = 0; i < 320; i += 4) {
-    const h = Math.max(0, Math.sin(i * 0.02) * 30 + Math.sin(i * 0.05) * 15 + 40);
-    ctx.fillRect(i, 180 - h, 4, h);
-  }
-  
-  // Foreground Mountains
-  ctx.fillStyle = '#3b5977';
-  for (let i = 0; i < 320; i += 4) {
-    const h = Math.max(0, Math.sin(i * 0.03 + 1) * 25 + Math.sin(i * 0.07) * 10 + 20);
-    ctx.fillRect(i, 180 - h, 4, h);
+    // Stars
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 80; i++) {
+      const sx = Math.floor(Math.random() * 320);
+      const sy = Math.floor(Math.random() * 100);
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+    // Moon
+    ctx.beginPath();
+    ctx.arc(260, 30, 14, 0, Math.PI * 2);
+    ctx.fillStyle = '#fffde7';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(268, 26, 11, 0, Math.PI * 2);
+    ctx.fillStyle = '#0d1b3a';
+    ctx.fill();
+    // Dark hills
+    ctx.fillStyle = '#1a2a4a';
+    for (let i = 0; i < 320; i += 4) {
+      const h = Math.max(0, Math.sin(i * 0.02) * 30 + Math.sin(i * 0.05) * 15 + 35);
+      ctx.fillRect(i, 180 - h, 4, h);
+    }
+    ctx.fillStyle = '#111e38';
+    for (let i = 0; i < 320; i += 4) {
+      const h = Math.max(0, Math.sin(i * 0.03 + 1) * 22 + Math.sin(i * 0.07) * 10 + 18);
+      ctx.fillRect(i, 180 - h, 4, h);
+    }
+  } else if (theme === 'desert') {
+    // Desert sky gradient
+    for (let y = 0; y < 120; y += 4) {
+      const ratio = y / 120;
+      const r = Math.floor(255 - 40 * ratio);
+      const g = Math.floor(180 - 80 * ratio);
+      const b = Math.floor(80 - 40 * ratio);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(0, y, 320, 4);
+    }
+    // Sun
+    ctx.beginPath();
+    ctx.arc(50, 35, 20, 0, Math.PI * 2);
+    ctx.fillStyle = '#fffde0';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(50, 35, 28, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,200,0.3)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    // Sand dunes
+    ctx.fillStyle = '#c9a05a';
+    for (let i = 0; i < 320; i += 4) {
+      const h = Math.max(0, Math.sin(i * 0.018) * 35 + Math.sin(i * 0.04) * 18 + 40);
+      ctx.fillRect(i, 180 - h, 4, h);
+    }
+    ctx.fillStyle = '#a07840';
+    for (let i = 0; i < 320; i += 4) {
+      const h = Math.max(0, Math.sin(i * 0.03 + 0.8) * 22 + 16);
+      ctx.fillRect(i, 180 - h, 4, h);
+    }
+  } else {
+    // Normal sky gradient
+    for (let y = 0; y < 180; y += 4) {
+      const ratio = y / 180;
+      const r = Math.floor(74 + (135 - 74) * ratio);
+      const g = Math.floor(144 + (206 - 144) * ratio);
+      const b = Math.floor(226 + (235 - 226) * ratio);
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.fillRect(0, y, 320, 4);
+    }
+    ctx.fillStyle = '#ffffff';
+    const drawCloud = (cx: number, cy: number, w: number) => {
+      for (let x = cx; x < cx + w; x += 4) {
+        const h = Math.abs(Math.sin((x - cx) / w * Math.PI)) * 16;
+        ctx.fillRect(x, cy - h, 4, h * 2);
+      }
+    };
+    drawCloud(20, 40, 60);
+    drawCloud(150, 60, 80);
+    drawCloud(260, 30, 50);
+    drawCloud(330, 50, 70);
+    ctx.fillStyle = '#5c7a99';
+    for (let i = 0; i < 320; i += 4) {
+      const h = Math.max(0, Math.sin(i * 0.02) * 30 + Math.sin(i * 0.05) * 15 + 40);
+      ctx.fillRect(i, 180 - h, 4, h);
+    }
+    ctx.fillStyle = '#3b5977';
+    for (let i = 0; i < 320; i += 4) {
+      const h = Math.max(0, Math.sin(i * 0.03 + 1) * 25 + Math.sin(i * 0.07) * 10 + 20);
+      ctx.fillRect(i, 180 - h, 4, h);
+    }
   }
 
   return canvas;
 };
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear, gameMode, stageTheme }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef<{ [key: string]: boolean }>({});
   const callbacksRef = useRef({ onGameOver, onGameClear });
@@ -69,7 +136,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const bgCanvas = generatePixelBackground();
+    const bgCanvas = generatePixelBackground(stageTheme);
+    const groundColor = stageTheme === 'desert' ? '#c49a40' : stageTheme === 'night' ? '#1a1a2e' : '#8B4513';
+    const grassColor = stageTheme === 'desert' ? '#d4a847' : stageTheme === 'night' ? '#1e3a1e' : '#228B22';
+    const skyFallback = stageTheme === 'desert' ? '#f0a060' : stageTheme === 'night' ? '#0d0d1a' : '#87CEEB';
 
     // Load GitHub assets
     const playerImg = new Image();
@@ -87,8 +157,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
 
     let animationFrameId: number;
 
-    const generateLevel = (targetWidth: number) => {
-      const groundPoints: {x: number, y: number}[] = [{ x: 0, y: 500 }];
+    const generateLevel = (targetWidth: number, startX = 0, startY = 500) => {
+      const groundPoints: {x: number, y: number}[] = [{ x: startX, y: startY }];
       const loops: {x: number, y: number, radius: number}[] = [];
       const springs: {x: number, y: number, width: number, height: number, power: number}[] = [];
       const enemies: {x: number, y: number, width: number, height: number, vx: number, isDead: boolean, startX: number}[] = [];
@@ -97,8 +167,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
       const spikes: {x: number, y: number, width: number, height: number}[] = [];
       const platforms: {x: number, y: number, width: number, height: number}[] = [];
 
-      let cx = 0;
-      let cy = 500;
+      let cx = startX;
+      let cy = startY;
 
       const addPoints = (pts: {x: number, y: number}[]) => {
         pts.forEach(p => groundPoints.push(p));
@@ -158,8 +228,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
         ]);
       };
 
-      // Start safe
-      makeFlat(800);
+      // Start safe (only at the very beginning)
+      if (startX === 0) makeFlat(800);
 
       while (cx < targetWidth) {
         const r = Math.random();
@@ -243,7 +313,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
     };
 
     const level = generateLevel(15000);
-    const LEVEL_WIDTH = level.levelWidth;
     const { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms } = level;
     const particles: {x: number, y: number, vx: number, vy: number, life: number, maxLife: number, size: number}[] = [];
 
@@ -305,6 +374,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
     let prevKeys: { [key: string]: boolean } = {};
 
     let isGameOver = false;
+    let gameTime = 0; // frame counter (60fps = 1s)
+    let distanceTraveled = 0; // for infinite mode
+
+    const buildResult = (): GameResult => {
+      const timeSeconds = Math.floor(gameTime / 60);
+      const score = player.rings * 100 + Math.max(0, 99999 - timeSeconds * 50);
+      if (gameMode === 'infinite') {
+        return { rings: player.rings, timeSeconds, score, distance: Math.floor(distanceTraveled / 10) };
+      }
+      return { rings: player.rings, timeSeconds, score };
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => { 
       keys[e.key] = true; 
@@ -317,6 +397,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
 
     const update = () => {
       if (isGameOver) return;
+
+      gameTime++;
+      if (gameMode === 'infinite') {
+        distanceTraveled = Math.max(distanceTraveled, player.x);
+      }
 
       if (!Number.isFinite(player.x)) player.x = 100;
       if (!Number.isFinite(player.y)) player.y = 400;
@@ -590,7 +675,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
                 soundManager.playDamage();
               } else {
                 isGameOver = true;
-                callbacksRef.current.onGameOver();
+                callbacksRef.current.onGameOver(buildResult());
               }
             }
           }
@@ -632,13 +717,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
       // Fall death condition
       if (player.y > 1800) {
         isGameOver = true;
-        callbacksRef.current.onGameOver();
+        callbacksRef.current.onGameOver(buildResult());
       }
 
-      // Goal condition
-      if (player.x > LEVEL_WIDTH - 100) {
+      // Infinite mode: extend level when player approaches end
+      if (gameMode === 'infinite' && player.x > level.levelWidth - 3000) {
+        const lastPt = level.groundPoints[level.groundPoints.length - 1];
+        const ext = generateLevel(lastPt.x + 5000, lastPt.x, lastPt.y);
+        // Skip the first point (duplicate of current last point)
+        for (let i = 1; i < ext.groundPoints.length; i++) level.groundPoints.push(ext.groundPoints[i]);
+        ext.springs.forEach(s => level.springs.push(s));
+        ext.enemies.forEach(e => level.enemies.push(e));
+        ext.rings.forEach(r => level.rings.push(r));
+        ext.dashPanels.forEach(d => level.dashPanels.push(d));
+        ext.spikes.forEach(s => level.spikes.push(s));
+        ext.platforms.forEach(p => level.platforms.push(p));
+        level.levelWidth = ext.levelWidth;
+      }
+
+      // Goal condition (normal mode only)
+      if (gameMode === 'normal' && player.x > level.levelWidth - 100) {
         isGameOver = true;
-        callbacksRef.current.onGameClear();
+        callbacksRef.current.onGameClear(buildResult());
       }
 
       // Rings collision
@@ -688,7 +788,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
               soundManager.playDamage();
             } else {
               isGameOver = true;
-              callbacksRef.current.onGameOver();
+              callbacksRef.current.onGameOver(buildResult());
             }
           }
         }
@@ -702,14 +802,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
       const zoom = 1.5;
       let cameraX = player.x - (canvas.width / zoom) / 3;
       if (cameraX < 0) cameraX = 0;
-      if (cameraX > LEVEL_WIDTH - (canvas.width / zoom)) cameraX = LEVEL_WIDTH - (canvas.width / zoom);
+      if (cameraX > level.levelWidth - (canvas.width / zoom)) cameraX = level.levelWidth - (canvas.width / zoom);
 
       let cameraY = player.y - (canvas.height / zoom) / 2 + 50;
       // Prevent camera from going too high above the level
       if (cameraY < -1000) cameraY = -1000;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#87CEEB'; // Sky blue fallback
+      ctx.fillStyle = skyFallback;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       ctx.save();
@@ -740,15 +840,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
       ctx.lineTo(groundPoints[groundPoints.length - 1].x, cameraY + canvas.height + 1000);
       ctx.closePath();
       
-      ctx.fillStyle = '#8B4513'; // Dirt
+      ctx.fillStyle = groundColor;
       ctx.fill();
-      
+
       ctx.beginPath();
       for (let i = 0; i < groundPoints.length; i++) {
         if (i === 0) ctx.moveTo(groundPoints[i].x, groundPoints[i].y);
         else ctx.lineTo(groundPoints[i].x, groundPoints[i].y);
       }
-      ctx.strokeStyle = '#228B22'; // Grass
+      ctx.strokeStyle = grassColor;
       ctx.lineWidth = 16;
       ctx.lineJoin = 'round';
       ctx.stroke();
@@ -766,13 +866,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
         }
       });
 
-      // Draw Goal
-      const goalX = LEVEL_WIDTH - 150;
-      const goalY = getGroundY(goalX);
-      ctx.fillStyle = '#FFD700';
-      ctx.fillRect(goalX, goalY - 200, 20, 200);
-      ctx.fillStyle = '#FF0000';
-      ctx.fillRect(goalX, goalY - 200, 80, 40);
+      // Draw Goal (normal mode only)
+      if (gameMode === 'normal') {
+        const goalX = level.levelWidth - 150;
+        const goalY = getGroundY(goalX);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillRect(goalX, goalY - 200, 20, 200);
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(goalX, goalY - 200, 80, 40);
+      }
 
       // Draw Dash Panels
       dashPanels.forEach(panel => {
@@ -993,15 +1095,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
         }
       }
 
-      // UI (Rings count)
+      // HUD
       ctx.restore(); // Restore camera translation
       ctx.restore(); // Restore zoom scale
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 24px "JetBrains Mono", monospace';
+
+      const hudTimeSeconds = Math.floor(gameTime / 60);
+      const hudMin = Math.floor(hudTimeSeconds / 60).toString().padStart(2, '0');
+      const hudSec = (hudTimeSeconds % 60).toString().padStart(2, '0');
+      const hudScore = player.rings * 100 + Math.max(0, 99999 - hudTimeSeconds * 50);
+
+      ctx.font = 'bold 20px "JetBrains Mono", monospace';
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 3;
-      ctx.strokeText(`RINGS: ${player.rings}`, 20, 40);
-      ctx.fillText(`RINGS: ${player.rings}`, 20, 40);
+      ctx.fillStyle = '#FFD700';
+      ctx.strokeText(`RINGS: ${player.rings}`, 16, 34);
+      ctx.fillText(`RINGS: ${player.rings}`, 16, 34);
+
+      ctx.fillStyle = '#AADDFF';
+      ctx.strokeText(`TIME: ${hudMin}:${hudSec}`, 16, 60);
+      ctx.fillText(`TIME: ${hudMin}:${hudSec}`, 16, 60);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeText(`SCORE: ${hudScore.toLocaleString()}`, 16, 86);
+      ctx.fillText(`SCORE: ${hudScore.toLocaleString()}`, 16, 86);
+
+      if (gameMode === 'infinite') {
+        ctx.fillStyle = '#88FF88';
+        const dist = Math.floor(distanceTraveled / 10);
+        ctx.strokeText(`DIST: ${dist.toLocaleString()}m`, 16, 112);
+        ctx.fillText(`DIST: ${dist.toLocaleString()}m`, 16, 112);
+      }
     };
 
     let lastTime = performance.now();
