@@ -19,6 +19,11 @@ export class SoundManager {
     this.muted = muted;
     if (muted) {
       this.stopBGM();
+    } else {
+      // Resume BGM if it was playing
+      if (this.bgmActive) {
+        this.playBGM(this.bgmTheme);
+      }
     }
   }
 
@@ -172,7 +177,12 @@ export class SoundManager {
   }
 
   playBGM(theme: 'normal' | 'desert' | 'night' | 'boss') {
-    if (this.muted) return;
+    if (this.muted) {
+      // Store the theme so if unmuted later we can resume
+      this.bgmTheme = theme;
+      this.bgmActive = true;
+      return;
+    }
     if (!this.ctx) return;
     this.stopBGM();
     this.bgmActive = true;
@@ -205,14 +215,12 @@ export class SoundManager {
     const theme = this.bgmTheme;
     const ctx = this.ctx;
 
-    // Theme-specific parameters
     type NoteSeq = { freq: number; dur: number }[];
     let bpm = 160;
     let melodyNotes: NoteSeq = [];
     let bassNotes: NoteSeq = [];
 
     if (theme === 'normal') {
-      // Upbeat C major, 160bpm
       bpm = 160;
       melodyNotes = [
         { freq: 523, dur: 0.25 }, { freq: 659, dur: 0.25 }, { freq: 784, dur: 0.25 }, { freq: 1047, dur: 0.25 },
@@ -300,14 +308,11 @@ export class SoundManager {
     const melodyDur = scheduleNotes(melodyNotes, 'square', 0.06, 1);
     scheduleNotes(bassNotes, 'square', 0.06, 1);
 
-    // Keep refs so we can stop them
     newNodes.forEach(n => this.bgmNodes.push(n));
 
-    // Reschedule before the loop ends
     const rescheduleIn = Math.max(50, (melodyDur - 0.5) * 1000);
     this.bgmTimeoutId = setTimeout(() => {
       if (this.bgmActive && this.ctx) {
-        // clean up finished nodes
         this.bgmNodes = [];
         this._scheduleBGM(this.ctx.currentTime);
       }
