@@ -186,7 +186,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
           loops.push({ x: cx, y: cy - 120, radius: 120 });
           makeFlat(400);
           dashPanels.push({ x: cx - 100, y: cy - 10, width: 40, height: 10, direction: 1 });
-          makeGap(1000); // Huge gap
+          springs.push({ x: cx - 60, y: cy - 20, width: 32, height: 20, power: -22 }); // Launchpad before big gap
+          makeGap(700); // Big gap (crossable with spring + double jump)
           makeFlat(400);
         } else if (r < 0.55) {
           // Hill with rings and maybe enemy
@@ -296,7 +297,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
       spinAngle: 0,
       rings: 0,
       frameX: 0,
-      tick: 0
+      tick: 0,
+      jumpsRemaining: 2
     };
 
     const keys = keysRef.current;
@@ -455,12 +457,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
           }
         });
 
-        // Jump
-        if (jumpPressedThisFrame && player.isGrounded && !player.isSpindashing) {
-          player.vy = player.jumpPower * Math.cos(slopeAngle);
-          player.vx -= player.jumpPower * Math.sin(slopeAngle);
+        // Jump (supports double jump)
+        if (jumpPressedThisFrame && player.jumpsRemaining > 0 && !player.isSpindashing) {
+          if (player.isGrounded) {
+            player.vy = player.jumpPower * Math.cos(slopeAngle);
+            player.vx -= player.jumpPower * Math.sin(slopeAngle);
+          } else {
+            // Second jump — straight up, no slope correction
+            player.vy = player.jumpPower * 0.85;
+          }
           player.isGrounded = false;
           player.isRolling = false;
+          player.jumpsRemaining--;
           soundManager.playJump();
         }
 
@@ -505,6 +513,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
             player.y = finalGroundY - player.height;
             player.vy = 0;
             player.angle = finalSlopeAngle;
+            player.jumpsRemaining = 2; // Reset double jump while grounded
           }
         } else {
           player.angle = 0;
@@ -513,6 +522,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear 
               player.y = finalGroundY - player.height;
               player.vy = 0;
               player.isGrounded = true;
+              player.jumpsRemaining = 2; // Reset double jump on landing
               player.isRolling = false;
             } else {
               // Hit a wall, stop horizontal movement
