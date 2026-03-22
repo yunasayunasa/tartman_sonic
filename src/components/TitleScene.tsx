@@ -167,13 +167,13 @@ export const TitleScene: React.FC<TitleSceneProps> = ({ onGameStart }) => {
             textShadow: '0 0 20px #3B82F6, 0 0 50px #2563EB, 4px 4px 0 #1E3A5F, -1px -1px 0 #93C5FD',
           }}
         >
-          タルトマン
+          タルトラン
         </h1>
         <p
           className="text-2xl font-bold tracking-[0.35em] mt-2 select-none"
           style={{ color: '#FCD34D', textShadow: '0 0 12px #FBBF24, 2px 2px 0 #78350F' }}
         >
-          2D アクション
+          ワールドソニック
         </p>
       </div>
 
