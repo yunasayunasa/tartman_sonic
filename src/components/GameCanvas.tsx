@@ -337,17 +337,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
     const particles: {x: number, y: number, vx: number, vy: number, life: number, maxLife: number, size: number}[] = [];
     // Bosses spawn every 5000px (starting at x=5000 in normal mode)
     const bossSpawnPositions = gameMode === 'normal' ? [5000, 10000] : [];
-    const bosses: {x: number, y: number, width: number, height: number, hp: number, maxHp: number, vx: number, isDead: boolean, phase: number, chargeTimer: number, startX: number}[] = [];
-    bossSpawnPositions.forEach(bx => {
-      const by = getGroundY(bx) - 80;
-      bosses.push({ x: bx, y: by, width: 80, height: 80, hp: 5, maxHp: 5, vx: -2, isDead: false, phase: 0, chargeTimer: 0, startX: bx });
-    });
-    let bossActive = false;
-
     const getGroundY = (x: number) => {
       if (x <= groundPoints[0].x) return groundPoints[0].y;
       if (x >= groundPoints[groundPoints.length - 1].x) return groundPoints[groundPoints.length - 1].y;
-      
+
       let left = 0;
       let right = groundPoints.length - 1;
       while (left <= right) {
@@ -364,6 +357,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       }
       return 500;
     };
+
+    const bosses: {x: number, y: number, width: number, height: number, hp: number, maxHp: number, vx: number, isDead: boolean, phase: number, chargeTimer: number, startX: number}[] = [];
+    bossSpawnPositions.forEach(bx => {
+      const by = getGroundY(bx) - 80;
+      bosses.push({ x: bx, y: by, width: 80, height: 80, hp: 5, maxHp: 5, vx: -2, isDead: false, phase: 0, chargeTimer: 0, startX: bx });
+    });
+    let bossActive = false;
 
     const player = {
       x: 100,
