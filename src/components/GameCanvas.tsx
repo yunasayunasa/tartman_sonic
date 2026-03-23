@@ -707,14 +707,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           if (finalGroundY > 1500) {
             player.isGrounded = false;
           } else {
-            // Slope gravity
-            player.vx += Math.sin(finalSlopeAngle) * 0.8;
-            
-            // Stick to ground
-            player.y = finalGroundY - player.height;
-            player.vy = 0;
-            player.angle = finalSlopeAngle;
-            player.jumpsRemaining = 2; // Reset double jump while grounded
+            const currentBottom = player.y + player.height;
+            if (finalGroundY > currentBottom + 20) {
+              // Walked off edge of elevated surface — fall naturally instead of warping down
+              player.isGrounded = false;
+            } else {
+              // Slope gravity
+              player.vx += Math.sin(finalSlopeAngle) * 0.8;
+              // Stick to ground / slope
+              player.y = finalGroundY - player.height;
+              player.vy = 0;
+              player.angle = finalSlopeAngle;
+              player.jumpsRemaining = 2; // Reset double jump while grounded
+            }
           }
         } else {
           player.angle = 0;
@@ -1527,47 +1532,83 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         if (!enemy.isDead) {
           // Special rendering for new enemy types
           if (enemy.type === 'turtle') {
+            const ex = enemy.x, ey = enemy.y;
+            const ew = enemy.width, eh = enemy.height;
+            const facingLeft = enemy.vx <= 0;
+
             if (!enemy.shellActive) {
-              // Body (green)
-              ctx.fillStyle = '#2E7D32';
-              ctx.fillRect(enemy.x + 4, enemy.y + 10, enemy.width - 8, enemy.height - 10);
-              // Shell (brown ellipse)
+              // Legs (drawn first, behind body)
+              ctx.fillStyle = '#33691E';
+              ctx.fillRect(ex + 5, ey + eh - 9, 8, 9);       // front leg
+              ctx.fillRect(ex + ew - 13, ey + eh - 9, 8, 9); // back leg
+              ctx.fillRect(ex + 5, ey + 8, 8, 7);             // front arm
+              ctx.fillRect(ex + ew - 13, ey + 8, 8, 7);       // back arm
+
+              // Body
+              ctx.fillStyle = '#558B2F';
+              ctx.fillRect(ex + 5, ey + 6, ew - 10, eh - 12);
+
+              // Shell dome (upper arc = dome facing up)
+              const sCX = ex + ew / 2;
+              const sCY = ey + Math.round(eh * 0.45);
+              const sR = Math.round(ew * 0.44);
               ctx.fillStyle = '#6D4C41';
               ctx.beginPath();
-              ctx.ellipse(enemy.x + enemy.width / 2, enemy.y + 14, enemy.width / 2 - 2, 13, 0, 0, Math.PI * 2);
+              ctx.arc(sCX, sCY, sR, Math.PI, 0, true); // upper semicircle = dome
+              ctx.closePath();
               ctx.fill();
-              ctx.strokeStyle = '#4E342E';
+              ctx.strokeStyle = '#3E2723';
               ctx.lineWidth = 1.5;
               ctx.stroke();
-              // Shell pattern
-              ctx.strokeStyle = '#8D6E63';
+              // Shell ridge lines
+              ctx.strokeStyle = 'rgba(180,140,100,0.85)';
               ctx.lineWidth = 1;
               ctx.beginPath();
-              ctx.moveTo(enemy.x + enemy.width / 2, enemy.y + 2);
-              ctx.lineTo(enemy.x + enemy.width / 2, enemy.y + 26);
-              ctx.moveTo(enemy.x + 8, enemy.y + 14);
-              ctx.lineTo(enemy.x + enemy.width - 8, enemy.y + 14);
+              ctx.moveTo(sCX, sCY - sR);
+              ctx.lineTo(sCX, sCY);
+              ctx.moveTo(sCX - sR * 0.72, sCY - sR * 0.52);
+              ctx.lineTo(sCX, sCY);
+              ctx.moveTo(sCX + sR * 0.72, sCY - sR * 0.52);
+              ctx.lineTo(sCX, sCY);
+              ctx.moveTo(sCX - sR * 0.82, sCY - sR * 0.28);
+              ctx.lineTo(sCX + sR * 0.82, sCY - sR * 0.28);
               ctx.stroke();
-              // Eye
-              ctx.fillStyle = '#000';
-              ctx.fillRect(enemy.x + (enemy.vx <= 0 ? 5 : enemy.width - 10), enemy.y + 12, 4, 4);
+
+              // Head (sticking out sideways in facing direction)
+              const headX = facingLeft ? ex - 8 : ex + ew;
+              ctx.fillStyle = '#558B2F';
+              ctx.fillRect(headX, ey + eh - 16, 10, 11);
+              // Eyes: white sclera + black pupil
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillRect(headX + (facingLeft ? 1 : 2), ey + eh - 15, 5, 5);
+              ctx.fillStyle = '#111111';
+              ctx.fillRect(headX + (facingLeft ? 1 : 4), ey + eh - 14, 2, 2);
+
             } else {
-              // Shell sliding (no body visible)
+              // Shell sliding — rolling brown ball
               ctx.fillStyle = '#6D4C41';
               ctx.beginPath();
-              ctx.ellipse(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.width / 2, enemy.height / 2 - 2, 0, 0, Math.PI * 2);
+              ctx.arc(ex + ew / 2, ey + eh / 2, ew / 2 - 1, 0, Math.PI * 2);
               ctx.fill();
-              ctx.strokeStyle = '#4E342E';
+              ctx.strokeStyle = '#3E2723';
               ctx.lineWidth = 2;
               ctx.stroke();
-              // Speed lines
-              ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+              ctx.strokeStyle = 'rgba(180,140,100,0.85)';
               ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(ex + ew / 2, ey + 3);
+              ctx.lineTo(ex + ew / 2, ey + eh - 3);
+              ctx.moveTo(ex + 3, ey + eh / 2);
+              ctx.lineTo(ex + ew - 3, ey + eh / 2);
+              ctx.stroke();
+              // Yellow speed lines
+              ctx.strokeStyle = 'rgba(255,210,50,0.85)';
+              ctx.lineWidth = 2;
               const dir = enemy.vx > 0 ? -1 : 1;
-              for (let i = 0; i < 3; i++) {
+              for (let i = 0; i < 4; i++) {
                 ctx.beginPath();
-                ctx.moveTo(enemy.x + (dir > 0 ? enemy.width : 0), enemy.y + 8 + i * 8);
-                ctx.lineTo(enemy.x + (dir > 0 ? enemy.width + 12 : -12), enemy.y + 8 + i * 8);
+                ctx.moveTo(dir > 0 ? ex + ew + 2 : ex - 2, ey + 4 + i * 6);
+                ctx.lineTo(dir > 0 ? ex + ew + 16 : ex - 16, ey + 4 + i * 6);
                 ctx.stroke();
               }
             }
