@@ -168,12 +168,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       const groundPoints: {x: number, y: number}[] = [{ x: startX, y: startY }];
       const loops: {x: number, y: number, radius: number}[] = [];
       const springs: {x: number, y: number, width: number, height: number, power: number}[] = [];
-      const enemies: {x: number, y: number, width: number, height: number, vx: number, vy: number, isDead: boolean, startX: number, type: 'slime' | 'bouncer' | 'charger' | 'aerial', phase: number}[] = [];
+      const enemies: {x: number, y: number, width: number, height: number, vx: number, vy: number, isDead: boolean, startX: number, type: 'slime' | 'bouncer' | 'charger' | 'aerial' | 'turtle' | 'scorpion' | 'bat', phase: number, shellActive?: boolean}[] = [];
       const rings: {x: number, y: number, radius: number, collected: boolean}[] = [];
       const dashPanels: {x: number, y: number, width: number, height: number, direction: number}[] = [];
       const spikes: {x: number, y: number, width: number, height: number}[] = [];
       const platforms: {x: number, y: number, width: number, height: number}[] = [];
       const movingPlatforms: {x: number, y: number, width: number, height: number, vx: number, minX: number, maxX: number}[] = [];
+      const chainSprings: {x: number, y: number, width: number, height: number, power: number, chainVx: number}[] = [];
+      const crumblingPlatforms: {x: number, y: number, width: number, height: number, timer: number, falling: boolean, fallVy: number}[] = [];
+      const bonusRooms: {triggerX: number, triggerY: number, active: boolean, exitTimer: number, rings: {x: number, y: number, collected: boolean}[]}[] = [];
+      const catapults: {x: number, y: number, width: number, height: number}[] = [];
 
       let cx = startX;
       let cy = startY;
@@ -324,16 +328,75 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           spikes.push({ x: cx - 150, y: cy - 32, width: 64, height: 32 });
           makeFlat(300);
         }
+
+        // === Stage-specific extras ===
+        if (stageTheme === 'normal' && Math.random() < 0.18) {
+          // Turtle enemy
+          enemies.push({ x: cx - 200, y: cy - 32, width: 36, height: 30, vx: -1.5, vy: 0, isDead: false, startX: cx - 200, type: 'turtle', phase: 0, shellActive: false });
+        }
+        if (stageTheme === 'normal' && Math.random() < 0.09) {
+          // Catapult → sky route
+          catapults.push({ x: cx - 80, y: cy - 20, width: 48, height: 20 });
+          for (let i = 0; i < 4; i++) {
+            platforms.push({ x: cx + 100 + i * 240, y: cy - 290, width: 120, height: 20 });
+            for (let j = 0; j < 4; j++) {
+              rings.push({ x: cx + 120 + i * 240 + j * 25, y: cy - 325, radius: 10, collected: false });
+            }
+          }
+        }
+        if (stageTheme === 'desert' && Math.random() < 0.15) {
+          // Scorpion enemy
+          enemies.push({ x: cx - 150, y: cy - 28, width: 38, height: 28, vx: -1.5, vy: 0, isDead: false, startX: cx - 150, type: 'scorpion', phase: 0, shellActive: false });
+        }
+        if (stageTheme === 'desert' && Math.random() < 0.09) {
+          // Chain spring sequence (auto-launches player to high route)
+          makeFlat(2200);
+          const baseX = cx - 2150;
+          const baseY = cy;
+          // CS1: ground launch (diag up-right)
+          chainSprings.push({ x: baseX, y: baseY - 20, width: 40, height: 20, power: -18, chainVx: 14 });
+          // CS2: mid-height (launch higher)
+          chainSprings.push({ x: baseX + 760, y: baseY - 140, width: 40, height: 20, power: -20, chainVx: 10 });
+          // CS3: high (launch to platform)
+          chainSprings.push({ x: baseX + 1370, y: baseY - 260, width: 40, height: 20, power: -16, chainVx: 8 });
+          // High platform destination
+          platforms.push({ x: baseX + 1720, y: baseY - 370, width: 220, height: 20 });
+          for (let i = 0; i < 8; i++) {
+            rings.push({ x: baseX + 1740 + i * 24, y: baseY - 405, radius: 10, collected: false });
+          }
+        }
+        if (stageTheme === 'desert' && Math.random() < 0.11) {
+          // Crumbling sand platforms
+          const baseX = cx - 500;
+          const baseY = cy - 150;
+          for (let i = 0; i < 3; i++) {
+            crumblingPlatforms.push({ x: baseX + i * 200, y: baseY - (i % 2) * 50, width: 110, height: 20, timer: 0, falling: false, fallVy: 0 });
+            rings.push({ x: baseX + i * 200 + 55, y: baseY - (i % 2) * 50 - 35, radius: 10, collected: false });
+          }
+        }
+        if (stageTheme === 'night' && Math.random() < 0.15) {
+          // Bat enemy — hang near ceiling
+          enemies.push({ x: cx - 200, y: cy - 220, width: 32, height: 24, vx: 0, vy: 0, isDead: false, startX: cx - 200, type: 'bat', phase: 0, shellActive: false });
+        }
+        if (stageTheme === 'night' && Math.random() < 0.07) {
+          // Hidden bonus room trigger
+          const trigX = cx - 180;
+          const trigY = cy - 48;
+          const bonusRings: {x: number, y: number, collected: boolean}[] = [];
+          for (let i = 0; i < 8; i++) bonusRings.push({ x: trigX + 80 + i * 36, y: cy - 60, collected: false });
+          for (let i = 0; i < 5; i++) bonusRings.push({ x: trigX + 100 + i * 52, y: cy - 100, collected: false });
+          bonusRooms.push({ triggerX: trigX, triggerY: trigY, active: false, exitTimer: 0, rings: bonusRings });
+        }
       }
 
       // End area
       makeFlat(1000);
 
-      return { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms, movingPlatforms, levelWidth: cx };
+      return { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms, movingPlatforms, chainSprings, crumblingPlatforms, bonusRooms, catapults, levelWidth: cx };
     };
 
     const level = generateLevel(15000);
-    const { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms, movingPlatforms } = level;
+    const { groundPoints, loops, springs, enemies, rings, dashPanels, spikes, platforms, movingPlatforms, chainSprings, crumblingPlatforms, bonusRooms, catapults } = level;
     const particles: {x: number, y: number, vx: number, vy: number, life: number, maxLife: number, size: number}[] = [];
     // Bosses spawn every 5000px (starting at x=5000 in normal mode)
     const bossSpawnPositions = gameMode === 'normal' ? [5000, 10000] : [];
@@ -397,7 +460,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       tick: 0,
       jumpsRemaining: 2,
       isSuper: false,
-      superFlashTimer: 0
+      superFlashTimer: 0,
+      isChainLaunching: false,
+      chainLaunchTimer: 0,
     };
 
     const keys = keysRef.current;
@@ -504,6 +569,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
 
       const jumpPressedThisFrame = isUp && !prevKeys['jump'];
 
+      // Chain launch timer countdown
+      if (player.isChainLaunching) {
+        player.chainLaunchTimer--;
+        if (player.chainLaunchTimer <= 0) player.isChainLaunching = false;
+      }
+
       if (!player.isLooping) {
         // Spindash logic (Hold down to charge over time)
         if (isDown && player.isGrounded && Math.abs(player.vx) < 1) {
@@ -539,7 +610,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         }
 
         // Horizontal movement (Acceleration)
-        if (!player.isRolling && !player.isSpindashing) {
+        if (!player.isRolling && !player.isSpindashing && !player.isChainLaunching) {
           if (isLeft) {
             player.vx -= player.speed;
             player.facingRight = false;
@@ -547,10 +618,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
             player.vx += player.speed;
             player.facingRight = true;
           } else {
-            // Friction
-            player.vx *= player.friction;
+            // Friction (night stage: ice floor = less deceleration)
+            const frict = (stageTheme === 'night' && player.isGrounded) ? 0.97 : player.friction;
+            player.vx *= frict;
           }
-        } else if (!player.isSpindashing) {
+        } else if (!player.isSpindashing && !player.isChainLaunching) {
           // Rolling friction
           player.vx *= 0.98;
         }
@@ -694,6 +766,102 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           }
         });
 
+        // Chain Spring collision
+        chainSprings.forEach(cs => {
+          if (
+            player.x < cs.x + cs.width &&
+            player.x + player.width > cs.x &&
+            player.y + player.height >= cs.y &&
+            player.y + player.height <= cs.y + 30 &&
+            player.vy >= 0
+          ) {
+            player.vy = cs.power;
+            player.vx = cs.chainVx;
+            player.facingRight = cs.chainVx > 0;
+            player.isChainLaunching = true;
+            player.chainLaunchTimer = 90;
+            player.isGrounded = false;
+            player.isRolling = true;
+            player.isSpindashing = false;
+            soundManager.playSpring();
+          }
+        });
+
+        // Catapult collision (normal stage)
+        catapults.forEach(cat => {
+          if (
+            player.x < cat.x + cat.width &&
+            player.x + player.width > cat.x &&
+            player.y + player.height >= cat.y &&
+            player.y + player.height <= cat.y + 30 &&
+            player.vy >= 0
+          ) {
+            player.vy = -28;
+            player.vx = player.facingRight ? Math.max(10, Math.abs(player.vx) * 1.2) : -Math.max(10, Math.abs(player.vx) * 1.2);
+            player.isGrounded = false;
+            player.isRolling = true;
+            player.isChainLaunching = true;
+            player.chainLaunchTimer = 130;
+            soundManager.playSpring();
+          }
+        });
+
+        // Crumbling Platform collision (desert stage)
+        crumblingPlatforms.forEach(cp => {
+          if (cp.falling) {
+            cp.fallVy += 0.5;
+            cp.y += cp.fallVy;
+            return;
+          }
+          if (
+            player.x + player.width > cp.x && player.x < cp.x + cp.width &&
+            player.vy >= 0 &&
+            player.y + player.height - player.vy <= cp.y + 8 &&
+            cp.y < getGroundY(player.x + player.width / 2)
+          ) {
+            player.y = cp.y - player.height;
+            player.vy = 0;
+            player.isGrounded = true;
+            player.jumpsRemaining = 2;
+            player.isRolling = false;
+            if (cp.timer === 0) cp.timer = 1;
+          }
+          if (cp.timer > 0) {
+            cp.timer++;
+            if (cp.timer > 90) { cp.falling = true; cp.fallVy = 0; }
+          }
+        });
+
+        // Bonus Room trigger (night stage)
+        bonusRooms.forEach(br => {
+          if (br.exitTimer > 0) {
+            br.exitTimer--;
+            br.rings.forEach(r => {
+              if (!r.collected) {
+                const dx = (player.x + player.width / 2) - r.x;
+                const dy = (player.y + player.height / 2) - r.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 36) {
+                  r.collected = true;
+                  player.rings++;
+                  soundManager.playRing();
+                }
+              }
+            });
+            return;
+          }
+          if (!br.active) {
+            if (
+              player.x + player.width >= br.triggerX &&
+              player.x <= br.triggerX + 48 &&
+              player.y + player.height >= br.triggerY &&
+              player.y <= br.triggerY + 80
+            ) {
+              br.active = true;
+              br.exitTimer = 360;
+            }
+          }
+        });
+
         // Loop entry
         loops.forEach(loop => {
           const distX = (player.x + player.width / 2) - loop.x;
@@ -797,6 +965,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         ext.spikes.forEach(s => level.spikes.push(s));
         ext.platforms.forEach(p => level.platforms.push(p));
         ext.movingPlatforms.forEach(p => level.movingPlatforms.push(p));
+        ext.chainSprings.forEach(cs => level.chainSprings.push(cs));
+        ext.crumblingPlatforms.forEach(cp => level.crumblingPlatforms.push(cp));
+        ext.catapults.forEach(c => level.catapults.push(c));
         level.levelWidth = ext.levelWidth;
       }
 
@@ -852,6 +1023,63 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           }
           enemy.x += enemy.vx;
           enemy.y = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
+        } else if (enemy.type === 'turtle') {
+          if (!enemy.shellActive) {
+            enemy.x += enemy.vx;
+            enemy.y = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
+            if (Math.abs(enemy.x - enemy.startX) > 80) enemy.vx *= -1;
+          } else {
+            // Shell sliding: kills other enemies on contact
+            enemy.x += enemy.vx;
+            enemy.y = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
+            enemy.vx *= 0.99;
+            if (Math.abs(enemy.vx) < 0.5) { enemy.shellActive = false; enemy.vx = -1.5; }
+            enemies.forEach(other => {
+              if (other === enemy || other.isDead || other.type === 'turtle') return;
+              if (other.x < enemy.x + enemy.width && other.x + other.width > enemy.x &&
+                  other.y < enemy.y + enemy.height && other.y + other.height > enemy.y) {
+                other.isDead = true;
+                soundManager.playDamage();
+              }
+            });
+          }
+        } else if (enemy.type === 'scorpion') {
+          // Retreat from player when close, else patrol
+          const distToPlayer = player.x - (enemy.x + enemy.width / 2);
+          if (Math.abs(distToPlayer) < 160) {
+            enemy.vx = distToPlayer > 0 ? -2.5 : 2.5;
+          } else {
+            if (Math.abs(enemy.x - enemy.startX) > 120) enemy.vx *= -1;
+            if (enemy.vx === 0) enemy.vx = -1.5;
+          }
+          enemy.x += enemy.vx;
+          enemy.y = getGroundY(enemy.x + enemy.width / 2) - enemy.height;
+        } else if (enemy.type === 'bat') {
+          const ceilingY = getGroundY(enemy.startX + enemy.width / 2) - 230;
+          const distToPlayer = player.x - (enemy.x + enemy.width / 2);
+          if (Math.abs(distToPlayer) < 260 && !enemy.shellActive) {
+            // Dive toward player
+            enemy.shellActive = true;
+            enemy.vx = distToPlayer > 0 ? 3.5 : -3.5;
+            enemy.vy = 4.5;
+          }
+          if (enemy.shellActive) {
+            enemy.x += enemy.vx;
+            enemy.y += enemy.vy;
+            const gY = getGroundY(enemy.x + enemy.width / 2);
+            if (enemy.y + enemy.height >= gY - 10 || Math.abs(enemy.x - (player.x + player.width / 2)) > 350) {
+              enemy.shellActive = false;
+              enemy.vx = 0;
+              enemy.vy = -3;
+            }
+          } else {
+            if (enemy.y > ceilingY) enemy.y -= 2.5;
+            else {
+              enemy.y = ceilingY;
+              enemy.vy = 0;
+              enemy.x = enemy.startX + Math.sin(enemy.phase * 0.018) * 35;
+            }
+          }
         } else {
           // Normal slime
           enemy.x += enemy.vx;
@@ -866,24 +1094,75 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           player.y + player.height > enemy.y
         ) {
           const isSpinning = !player.isGrounded || player.isRolling || player.isSpindashing || player.isLooping;
-          if (isSpinning) {
-            enemy.isDead = true;
-            soundManager.playDamage(); // Pop sound for enemy
-            if (!player.isGrounded && !player.isLooping) {
-              player.vy = player.jumpPower * 0.8;
+
+          if (enemy.type === 'scorpion') {
+            // Only ground spindash kills scorpion
+            if (player.isSpindashing && player.isGrounded) {
+              enemy.isDead = true;
+              soundManager.playDamage();
+            } else if (player.invincibleTimer <= 0) {
+              // Jumping on top also damages player
+              if (player.rings > 0) {
+                player.rings = 0; player.vy = -8;
+                player.vx = player.vx > 0 ? -6 : 6;
+                player.isRolling = false; player.invincibleTimer = 120;
+                damageFlashTimer = 12; shakeTimer = 14;
+                soundManager.playRingScatter();
+              } else { isGameOver = true; callbacksRef.current.onGameOver(buildResult()); }
             }
-          } else if (player.invincibleTimer <= 0) {
-            if (player.rings > 0) {
-              player.rings = 0;
-              player.vy = -8;
-              player.vx = player.vx > 0 ? -6 : 6;
-              player.isRolling = false;
-              player.invincibleTimer = 120;
-              damageFlashTimer = 12;
-              soundManager.playRingScatter();
+          } else if (enemy.type === 'turtle') {
+            if (!enemy.shellActive) {
+              if (player.isSpindashing) {
+                enemy.isDead = true; soundManager.playDamage();
+              } else if (!player.isGrounded && player.vy > 0 && player.y + player.height <= enemy.y + 14) {
+                // Stomp: activate shell
+                enemy.shellActive = true;
+                enemy.vx = (player.vx >= 0 ? 1 : -1) * Math.max(10, Math.abs(player.vx) * 1.5);
+                player.vy = player.jumpPower * 0.7;
+                soundManager.playSpring();
+              } else if (isSpinning) {
+                enemy.isDead = true; soundManager.playDamage();
+                if (!player.isGrounded && !player.isLooping) player.vy = player.jumpPower * 0.8;
+              } else if (player.invincibleTimer <= 0) {
+                if (player.rings > 0) {
+                  player.rings = 0; player.vy = -8; player.vx = player.vx > 0 ? -6 : 6;
+                  player.isRolling = false; player.invincibleTimer = 120;
+                  damageFlashTimer = 12; soundManager.playRingScatter();
+                } else { isGameOver = true; callbacksRef.current.onGameOver(buildResult()); }
+              }
             } else {
-              isGameOver = true;
-              callbacksRef.current.onGameOver(buildResult());
+              // Shell contact: spinning stops it, else damage
+              if (isSpinning) {
+                enemy.isDead = true; soundManager.playDamage();
+                if (!player.isGrounded && !player.isLooping) player.vy = player.jumpPower * 0.8;
+              } else if (player.invincibleTimer <= 0) {
+                if (player.rings > 0) {
+                  player.rings = 0; player.vy = -8; player.vx = player.vx > 0 ? -6 : 6;
+                  player.isRolling = false; player.invincibleTimer = 120;
+                  damageFlashTimer = 12; soundManager.playRingScatter();
+                } else { isGameOver = true; callbacksRef.current.onGameOver(buildResult()); }
+              }
+            }
+          } else {
+            if (isSpinning) {
+              enemy.isDead = true;
+              soundManager.playDamage();
+              if (!player.isGrounded && !player.isLooping) {
+                player.vy = player.jumpPower * 0.8;
+              }
+            } else if (player.invincibleTimer <= 0) {
+              if (player.rings > 0) {
+                player.rings = 0;
+                player.vy = -8;
+                player.vx = player.vx > 0 ? -6 : 6;
+                player.isRolling = false;
+                player.invincibleTimer = 120;
+                damageFlashTimer = 12;
+                soundManager.playRingScatter();
+              } else {
+                isGameOver = true;
+                callbacksRef.current.onGameOver(buildResult());
+              }
             }
           }
         }
@@ -1021,6 +1300,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       ctx.lineJoin = 'round';
       ctx.stroke();
 
+      // Night stage: ice floor sheen
+      if (stageTheme === 'night') {
+        ctx.beginPath();
+        for (let i = 0; i < groundPoints.length; i++) {
+          if (i === 0) ctx.moveTo(groundPoints[i].x, groundPoints[i].y - 3);
+          else ctx.lineTo(groundPoints[i].x, groundPoints[i].y - 3);
+        }
+        ctx.strokeStyle = 'rgba(160, 230, 255, 0.55)';
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      }
+
       // Draw Platforms
       platforms.forEach(plat => {
         if (platformImg.complete && platformImg.naturalWidth > 0) {
@@ -1113,6 +1404,109 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         ctx.fillRect(spring.x, spring.y, spring.width, 10);
       });
 
+      // Draw Chain Springs (purple, distinct)
+      chainSprings.forEach(cs => {
+        ctx.fillStyle = '#6600CC';
+        ctx.fillRect(cs.x, cs.y + 10, cs.width, 10);
+        ctx.fillStyle = '#CC44FF';
+        ctx.fillRect(cs.x, cs.y, cs.width, 10);
+        // Chain link indicator above
+        ctx.strokeStyle = '#FFCC00';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cs.x + cs.width / 2, cs.y - 2);
+        ctx.lineTo(cs.x + cs.width / 2, cs.y - 18);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#FFCC00';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⇒', cs.x + cs.width / 2, cs.y - 22);
+        ctx.textAlign = 'left';
+      });
+
+      // Draw Catapults (strong green launch pads)
+      catapults.forEach(cat => {
+        ctx.fillStyle = '#FF6600';
+        ctx.fillRect(cat.x, cat.y, cat.width, cat.height);
+        // Coil stripes
+        ctx.fillStyle = '#FFCC00';
+        for (let i = 0; i < 3; i++) {
+          ctx.fillRect(cat.x + 4, cat.y + 4 + i * 5, cat.width - 8, 3);
+        }
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('↑↑', cat.x + cat.width / 2, cat.y - 4);
+        ctx.textAlign = 'left';
+      });
+
+      // Draw Crumbling Platforms (desert)
+      crumblingPlatforms.forEach(cp => {
+        if (cp.y > 1700) return;
+        const shakePx = cp.timer > 60 ? (Math.random() - 0.5) * 3 : 0;
+        ctx.fillStyle = cp.timer > 0 ? '#b8903e' : '#d4b870';
+        ctx.fillRect(cp.x + shakePx, cp.y, cp.width, cp.height);
+        // Sand texture dots
+        ctx.fillStyle = 'rgba(180,140,60,0.6)';
+        for (let i = 8; i < cp.width; i += 16) ctx.fillRect(cp.x + i + shakePx, cp.y + 4, 6, 6);
+        // Cracks when crumbling
+        if (cp.timer > 30) {
+          ctx.strokeStyle = '#7a5a1a';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(cp.x + 20 + shakePx, cp.y);
+          ctx.lineTo(cp.x + 28 + shakePx, cp.y + cp.height);
+          ctx.moveTo(cp.x + 65 + shakePx, cp.y);
+          ctx.lineTo(cp.x + 55 + shakePx, cp.y + cp.height);
+          ctx.stroke();
+        }
+      });
+
+      // Draw Bonus Rooms (night)
+      bonusRooms.forEach(br => {
+        if (!br.active) {
+          // Glowing "?" hint on wall
+          const pulse = Math.sin(Date.now() / 300) * 0.3 + 0.7;
+          ctx.fillStyle = `rgba(255,255,100,${pulse * 0.4})`;
+          ctx.fillRect(br.triggerX, br.triggerY, 48, 48);
+          ctx.strokeStyle = `rgba(255,255,100,${pulse * 0.8})`;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(br.triggerX, br.triggerY, 48, 48);
+          ctx.fillStyle = `rgba(255,255,100,${pulse})`;
+          ctx.font = 'bold 22px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('?', br.triggerX + 24, br.triggerY + 34);
+          ctx.textAlign = 'left';
+        } else {
+          // Active bonus room glow
+          ctx.fillStyle = 'rgba(255,215,0,0.12)';
+          ctx.fillRect(br.triggerX - 20, br.triggerY - 130, 500, 155);
+          ctx.strokeStyle = 'rgba(255,215,0,0.4)';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(br.triggerX - 20, br.triggerY - 130, 500, 155);
+          // Bonus rings
+          br.rings.forEach(r => {
+            if (!r.collected) {
+              ctx.beginPath();
+              ctx.arc(r.x, r.y, 10, 0, Math.PI * 2);
+              ctx.strokeStyle = '#FFD700';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+              ctx.fillStyle = '#FFF8DC';
+              ctx.fill();
+            }
+          });
+          // "BONUS!" label
+          ctx.fillStyle = '#FFD700';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('BONUS!', br.triggerX + 220, br.triggerY - 138);
+          ctx.textAlign = 'left';
+        }
+      });
+
       // Draw Loops
       loops.forEach(loop => {
         ctx.beginPath();
@@ -1131,6 +1525,141 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       // Draw Enemies
       enemies.forEach(enemy => {
         if (!enemy.isDead) {
+          // Special rendering for new enemy types
+          if (enemy.type === 'turtle') {
+            if (!enemy.shellActive) {
+              // Body (green)
+              ctx.fillStyle = '#2E7D32';
+              ctx.fillRect(enemy.x + 4, enemy.y + 10, enemy.width - 8, enemy.height - 10);
+              // Shell (brown ellipse)
+              ctx.fillStyle = '#6D4C41';
+              ctx.beginPath();
+              ctx.ellipse(enemy.x + enemy.width / 2, enemy.y + 14, enemy.width / 2 - 2, 13, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = '#4E342E';
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+              // Shell pattern
+              ctx.strokeStyle = '#8D6E63';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(enemy.x + enemy.width / 2, enemy.y + 2);
+              ctx.lineTo(enemy.x + enemy.width / 2, enemy.y + 26);
+              ctx.moveTo(enemy.x + 8, enemy.y + 14);
+              ctx.lineTo(enemy.x + enemy.width - 8, enemy.y + 14);
+              ctx.stroke();
+              // Eye
+              ctx.fillStyle = '#000';
+              ctx.fillRect(enemy.x + (enemy.vx <= 0 ? 5 : enemy.width - 10), enemy.y + 12, 4, 4);
+            } else {
+              // Shell sliding (no body visible)
+              ctx.fillStyle = '#6D4C41';
+              ctx.beginPath();
+              ctx.ellipse(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.width / 2, enemy.height / 2 - 2, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = '#4E342E';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+              // Speed lines
+              ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+              ctx.lineWidth = 1.5;
+              const dir = enemy.vx > 0 ? -1 : 1;
+              for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(enemy.x + (dir > 0 ? enemy.width : 0), enemy.y + 8 + i * 8);
+                ctx.lineTo(enemy.x + (dir > 0 ? enemy.width + 12 : -12), enemy.y + 8 + i * 8);
+                ctx.stroke();
+              }
+            }
+            return;
+          }
+
+          if (enemy.type === 'scorpion') {
+            // Body
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(enemy.x + 6, enemy.y + 8, enemy.width - 12, enemy.height - 8);
+            // Claws
+            ctx.fillStyle = '#A0522D';
+            ctx.fillRect(enemy.x, enemy.y + 10, 8, 8);
+            ctx.fillRect(enemy.x + enemy.width - 8, enemy.y + 10, 8, 8);
+            // Eyes
+            ctx.fillStyle = '#FF4400';
+            ctx.fillRect(enemy.x + 10, enemy.y + 10, 4, 4);
+            ctx.fillRect(enemy.x + enemy.width - 14, enemy.y + 10, 4, 4);
+            // Tail (curved upward, stinger at tip)
+            const tailDir = enemy.vx >= 0 ? 1 : -1;
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(enemy.x + enemy.width / 2, enemy.y + 4);
+            ctx.quadraticCurveTo(
+              enemy.x + enemy.width / 2 + tailDir * 22, enemy.y - 18,
+              enemy.x + enemy.width / 2 + tailDir * 12, enemy.y - 26
+            );
+            ctx.stroke();
+            ctx.fillStyle = '#FF2200';
+            ctx.beginPath();
+            ctx.arc(enemy.x + enemy.width / 2 + tailDir * 12, enemy.y - 26, 5, 0, Math.PI * 2);
+            ctx.fill();
+            // "SPIN!" hint
+            ctx.fillStyle = '#FF8800';
+            ctx.font = 'bold 7px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('SPIN!', enemy.x + enemy.width / 2, enemy.y - 4);
+            ctx.textAlign = 'left';
+            return;
+          }
+
+          if (enemy.type === 'bat') {
+            const flap = Math.sin(enemy.phase * 0.25) > 0;
+            // Body
+            ctx.fillStyle = '#4A148C';
+            ctx.beginPath();
+            ctx.ellipse(enemy.x + enemy.width / 2, enemy.y + 12, 9, 9, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Wings
+            ctx.fillStyle = '#7B1FA2';
+            if (flap) {
+              // Wings up
+              ctx.beginPath();
+              ctx.moveTo(enemy.x + enemy.width / 2 - 4, enemy.y + 8);
+              ctx.lineTo(enemy.x - 4, enemy.y - 2);
+              ctx.lineTo(enemy.x + 2, enemy.y + 14);
+              ctx.closePath(); ctx.fill();
+              ctx.beginPath();
+              ctx.moveTo(enemy.x + enemy.width / 2 + 4, enemy.y + 8);
+              ctx.lineTo(enemy.x + enemy.width + 4, enemy.y - 2);
+              ctx.lineTo(enemy.x + enemy.width - 2, enemy.y + 14);
+              ctx.closePath(); ctx.fill();
+            } else {
+              // Wings down
+              ctx.beginPath();
+              ctx.moveTo(enemy.x + enemy.width / 2 - 4, enemy.y + 10);
+              ctx.lineTo(enemy.x - 8, enemy.y + 18);
+              ctx.lineTo(enemy.x + 4, enemy.y + 20);
+              ctx.closePath(); ctx.fill();
+              ctx.beginPath();
+              ctx.moveTo(enemy.x + enemy.width / 2 + 4, enemy.y + 10);
+              ctx.lineTo(enemy.x + enemy.width + 8, enemy.y + 18);
+              ctx.lineTo(enemy.x + enemy.width - 4, enemy.y + 20);
+              ctx.closePath(); ctx.fill();
+            }
+            // Eyes
+            ctx.fillStyle = '#FF1744';
+            ctx.fillRect(enemy.x + 5, enemy.y + 8, 4, 4);
+            ctx.fillRect(enemy.x + 18, enemy.y + 8, 4, 4);
+            // Hanging thread when at ceiling
+            if (!enemy.shellActive) {
+              ctx.strokeStyle = 'rgba(150,100,200,0.5)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(enemy.x + enemy.width / 2, enemy.y);
+              ctx.lineTo(enemy.x + enemy.width / 2, enemy.y - 20);
+              ctx.stroke();
+            }
+            return;
+          }
+
           const typeColor = enemy.type === 'bouncer' ? '#FF8800' : enemy.type === 'charger' ? '#DD0033' : enemy.type === 'aerial' ? '#8844FF' : '#FF0000';
           if (enemyImg.complete && enemyImg.naturalWidth > 0) {
             const frames = Math.max(1, Math.floor(enemyImg.naturalWidth / enemyImg.naturalHeight));
@@ -1328,6 +1857,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       // HUD
       ctx.restore(); // Restore camera translation
       ctx.restore(); // Restore zoom scale
+
+      // Night stage: darkness overlay (screen space, after restoring transforms)
+      if (stageTheme === 'night') {
+        const psx = (player.x + player.width / 2 - cameraX) * zoom + shakeX;
+        const psy = (player.y + player.height / 2 - cameraY) * zoom + shakeY;
+        const darkGrad = ctx.createRadialGradient(psx, psy, 55, psx, psy, 290);
+        darkGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        darkGrad.addColorStop(0.35, 'rgba(0,0,8,0.25)');
+        darkGrad.addColorStop(1, 'rgba(0,0,12,0.91)');
+        ctx.fillStyle = darkGrad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
 
       const hudTimeSeconds = Math.floor(gameTime / 60);
       const hudMin = Math.floor(hudTimeSeconds / 60).toString().padStart(2, '0');
