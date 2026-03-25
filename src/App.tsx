@@ -63,12 +63,12 @@ function App() {
               GAME OVER
             </h1>
           </div>
-          <p className="text-zinc-400 text-xl">リングを持たずに倒れてしまった...</p>
+          <p className="text-zinc-400 text-xl">タルトを持たずに倒れてしまった...</p>
 
           {gameResult && (
             <div className="bg-zinc-900/80 border border-zinc-700 rounded-2xl px-8 py-4 flex gap-10 text-center">
               <div>
-                <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">RINGS</div>
+                <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">タルト</div>
                 <div className="text-yellow-400 text-3xl font-black">{gameResult.rings}</div>
               </div>
               <div>

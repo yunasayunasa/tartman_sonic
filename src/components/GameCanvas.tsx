@@ -576,11 +576,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       }
 
       if (!player.isLooping) {
-        // Spindash logic (Hold down to charge over time)
-        if (isDown && player.isGrounded && Math.abs(player.vx) < 1) {
+        // Spindash logic — can activate while standing OR running
+        if (isDown && player.isGrounded) {
           player.isSpindashing = true;
           player.isRolling = true;
-          player.vx = 0;
+          // Only zero velocity when nearly stationary (standing spindash)
+          if (Math.abs(player.vx) < 1) {
+            player.vx = 0;
+          }
+          // While running: inertia carries through (vx unchanged), no left/right input
           player.spindashTimer++;
           if (player.spindashTimer > 15) {
             if (player.spindashCharge < 3) {
@@ -592,10 +596,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         } else if (player.isSpindashing && !isDown) {
           player.isSpindashing = false;
           player.isRolling = true;
-          if (player.spindashCharge > 0) {
-            player.vx = (15 + player.spindashCharge * 10) * (player.facingRight ? 1 : -1);
-            soundManager.playDash();
+          const currentSpeed = Math.abs(player.vx);
+          const dir = currentSpeed > 0.5 ? Math.sign(player.vx) : (player.facingRight ? 1 : -1);
+          if (currentSpeed < 1) {
+            // Standing spindash: launch from rest
+            player.vx = (15 + player.spindashCharge * 10) * dir;
+          } else {
+            // Running spindash: add boost on top of current momentum
+            player.vx += (8 + player.spindashCharge * 8) * dir;
           }
+          if (player.spindashCharge > 0 || currentSpeed < 1) soundManager.playDash();
           player.spindashCharge = 0;
           player.spindashTimer = 0;
         }
@@ -1920,8 +1930,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 3;
       ctx.fillStyle = player.isSuper ? '#FFD700' : '#FFD700';
-      ctx.strokeText(`RINGS: ${player.rings}`, 16, 34);
-      ctx.fillText(`RINGS: ${player.rings}`, 16, 34);
+      ctx.strokeText(`タルト: ${player.rings}`, 16, 34);
+      ctx.fillText(`タルト: ${player.rings}`, 16, 34);
 
       if (player.isSuper) {
         const superPulse = Math.sin(Date.now() / 120) * 0.5 + 0.5;

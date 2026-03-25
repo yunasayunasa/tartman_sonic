@@ -143,7 +143,7 @@ export const ClearScene: React.FC<ClearSceneProps> = ({ result, onRetry, onMenu 
         {result && (
           <div className="bg-zinc-900/80 border border-yellow-700/50 rounded-2xl px-8 py-4 flex gap-8 justify-center text-center">
             <div>
-              <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">RINGS</div>
+              <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">タルト</div>
               <div className="text-yellow-400 text-3xl font-black">{result.rings}</div>
             </div>
             <div>
