@@ -463,6 +463,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       superFlashTimer: 0,
       isChainLaunching: false,
       chainLaunchTimer: 0,
+      killScore: 0,
     };
 
     const keys = keysRef.current;
@@ -473,10 +474,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
     let distanceTraveled = 0; // for infinite mode
     let damageFlashTimer = 0; // red flash on hit
     let shakeTimer = 0; // screen shake on hit
+    let killFlashTimer = 0; // gold flash on enemy defeat
+    const scorePopups: {text: string, x: number, y: number, life: number, color: string}[] = [];
 
     const buildResult = (): GameResult => {
       const timeSeconds = Math.floor(gameTime / 60);
-      const score = player.rings * 100 + Math.max(0, 99999 - timeSeconds * 50);
+      const score = player.rings * 100 + player.killScore + Math.max(0, 99999 - timeSeconds * 50);
       if (gameMode === 'infinite') {
         return { rings: player.rings, timeSeconds, score, distance: Math.floor(distanceTraveled / 10) };
       }
@@ -498,6 +501,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       gameTime++;
       if (gameMode === 'infinite') {
         distanceTraveled = Math.max(distanceTraveled, player.x);
+      }
+
+      // Decay score popups
+      for (let i = scorePopups.length - 1; i >= 0; i--) {
+        scorePopups[i].y -= 0.8;
+        scorePopups[i].life--;
+        if (scorePopups[i].life <= 0) scorePopups.splice(i, 1);
       }
 
       // Super state: 50+ rings
@@ -701,34 +711,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         const finalSlopeY2 = getGroundY(finalPlayerCenterX + 5);
         finalSlopeAngle = Math.atan2(finalSlopeY2 - finalSlopeY1, 10);
 
+        // Track if finalGroundY came from a floating platform (not terrain)
+        let isOnFloatingPlatform = false;
         platforms.forEach(plat => {
           if (player.x + player.width > plat.x && player.x < plat.x + plat.width) {
             if (player.vy >= 0 && player.y + player.height - player.vy <= plat.y + 20) {
               if (plat.y < finalGroundY) {
                 finalGroundY = plat.y;
                 finalSlopeAngle = 0;
+                isOnFloatingPlatform = true;
               }
             }
           }
         });
 
         if (player.isGrounded) {
-          // Fall off if gap
           if (finalGroundY > 1500) {
             player.isGrounded = false;
           } else {
             const currentBottom = player.y + player.height;
-            if (finalGroundY > currentBottom + 20) {
-              // Walked off edge of elevated surface — fall naturally instead of warping down
+            const snapDelta = finalGroundY - currentBottom;
+            // Floating platform edge: fall off immediately when not directly over platform
+            // Terrain / moving platform: generous threshold so slopes at speed don't detach player
+            const fallThreshold = isOnFloatingPlatform ? 8 : 60;
+            if (snapDelta > fallThreshold) {
               player.isGrounded = false;
             } else {
-              // Slope gravity
-              player.vx += Math.sin(finalSlopeAngle) * 0.8;
-              // Stick to ground / slope
+              // Terrain follows slope angle; floating platforms are always flat
+              player.vx += isOnFloatingPlatform ? 0 : Math.sin(finalSlopeAngle) * 0.8;
               player.y = finalGroundY - player.height;
               player.vy = 0;
-              player.angle = finalSlopeAngle;
-              player.jumpsRemaining = 2; // Reset double jump while grounded
+              player.angle = isOnFloatingPlatform ? 0 : finalSlopeAngle;
+              player.jumpsRemaining = 2;
             }
           }
         } else {
@@ -911,7 +925,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
               player.y + player.height >= spike.y && player.y <= spike.y + spike.height) {
             if (player.invincibleTimer <= 0) {
               if (player.rings > 0) {
-                player.rings = 0;
+                player.rings = Math.max(0, player.rings - Math.max(1, Math.ceil(player.rings / 3)));
                 player.vy = -8;
                 player.vx = player.vx > 0 ? -6 : 6;
                 player.isRolling = false;
@@ -1004,6 +1018,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
             ring.collected = true;
             player.rings++;
             soundManager.playRing();
+            scorePopups.push({text: '+タルト', x: ring.x, y: ring.y - 8, life: 35, color: '#FFD700'});
           }
         }
       });
@@ -1102,6 +1117,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
           if (Math.abs(enemy.x - enemy.startX) > 100) enemy.vx *= -1;
         }
 
+        const wasAlreadyDead = enemy.isDead;
         if (
           player.x < enemy.x + enemy.width &&
           player.x + player.width > enemy.x &&
@@ -1118,7 +1134,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
             } else if (player.invincibleTimer <= 0) {
               // Jumping on top also damages player
               if (player.rings > 0) {
-                player.rings = 0; player.vy = -8;
+                player.rings = Math.max(0, player.rings - Math.max(1, Math.ceil(player.rings / 3)));
+                player.vy = -8;
                 player.vx = player.vx > 0 ? -6 : 6;
                 player.isRolling = false; player.invincibleTimer = 120;
                 damageFlashTimer = 12; shakeTimer = 14;
@@ -1140,7 +1157,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
                 if (!player.isGrounded && !player.isLooping) player.vy = player.jumpPower * 0.8;
               } else if (player.invincibleTimer <= 0) {
                 if (player.rings > 0) {
-                  player.rings = 0; player.vy = -8; player.vx = player.vx > 0 ? -6 : 6;
+                  player.rings = Math.max(0, player.rings - Math.max(1, Math.ceil(player.rings / 3)));
+                  player.vy = -8; player.vx = player.vx > 0 ? -6 : 6;
                   player.isRolling = false; player.invincibleTimer = 120;
                   damageFlashTimer = 12; soundManager.playRingScatter();
                 } else { isGameOver = true; callbacksRef.current.onGameOver(buildResult()); }
@@ -1152,7 +1170,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
                 if (!player.isGrounded && !player.isLooping) player.vy = player.jumpPower * 0.8;
               } else if (player.invincibleTimer <= 0) {
                 if (player.rings > 0) {
-                  player.rings = 0; player.vy = -8; player.vx = player.vx > 0 ? -6 : 6;
+                  player.rings = Math.max(0, player.rings - Math.max(1, Math.ceil(player.rings / 3)));
+                  player.vy = -8; player.vx = player.vx > 0 ? -6 : 6;
                   player.isRolling = false; player.invincibleTimer = 120;
                   damageFlashTimer = 12; soundManager.playRingScatter();
                 } else { isGameOver = true; callbacksRef.current.onGameOver(buildResult()); }
@@ -1167,7 +1186,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
               }
             } else if (player.invincibleTimer <= 0) {
               if (player.rings > 0) {
-                player.rings = 0;
+                player.rings = Math.max(0, player.rings - Math.max(1, Math.ceil(player.rings / 3)));
                 player.vy = -8;
                 player.vx = player.vx > 0 ? -6 : 6;
                 player.isRolling = false;
@@ -1180,6 +1199,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
               }
             }
           }
+        }
+
+        // Enemy just killed this frame → gold flash + score popup
+        if (enemy.isDead && !wasAlreadyDead) {
+          killFlashTimer = 8;
+          player.killScore += 200;
+          scorePopups.push({text: '+200pt 倒した!', x: enemy.x + enemy.width / 2, y: enemy.y - 10, life: 55, color: '#FFD700'});
         }
       });
 
@@ -1219,6 +1245,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
             soundManager.playDamage();
             if (boss.hp <= 0) {
               boss.isDead = true;
+              player.killScore += 1000;
+              killFlashTimer = 15;
+              scorePopups.push({text: '+1000pt BOSS CLEAR!', x: boss.x + boss.width / 2, y: boss.y - 20, life: 90, color: '#FF4400'});
               // Drop rings
               for (let i = 0; i < 8; i++) {
                 rings.push({ x: boss.x + i * 12 - 40, y: boss.y - 20, radius: 10, collected: false });
@@ -1227,7 +1256,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
             }
           } else if (!isSpinning && player.invincibleTimer <= 0) {
             if (player.rings > 0) {
-              player.rings = 0;
+              player.rings = Math.max(0, player.rings - Math.max(1, Math.ceil(player.rings / 3)));
               player.vy = -10; player.vx = player.vx > 0 ? -8 : 8;
               player.invincibleTimer = 120;
               damageFlashTimer = 12; shakeTimer = 18;
@@ -1949,6 +1978,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
       ctx.fillStyle = '#FFFFFF';
       ctx.strokeText(`SCORE: ${hudScore.toLocaleString()}`, 16, 86);
       ctx.fillText(`SCORE: ${hudScore.toLocaleString()}`, 16, 86);
+      // Score breakdown (small)
+      const tartPt = player.rings * 100;
+      const timePt = Math.max(0, 99999 - Math.floor(gameTime / 60) * 50);
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(200,200,200,0.7)';
+      ctx.strokeText(`タルト×100:${tartPt.toLocaleString()} 倒:${player.killScore} 時間:${timePt.toLocaleString()}`, 16, 100);
+      ctx.fillText(`タルト×100:${tartPt.toLocaleString()} 倒:${player.killScore} 時間:${timePt.toLocaleString()}`, 16, 100);
 
       if (gameMode === 'infinite') {
         ctx.fillStyle = '#88FF88';
@@ -1957,13 +1993,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onGameClear,
         ctx.fillText(`DIST: ${dist.toLocaleString()}m`, 16, 112);
       }
 
-      // Damage flash overlay
+      // Damage flash overlay (red = player took damage)
       if (damageFlashTimer > 0) {
         damageFlashTimer--;
         ctx.save();
         ctx.globalAlpha = (damageFlashTimer / 12) * 0.45;
         ctx.fillStyle = '#FF0000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+
+      // Kill flash overlay (gold = enemy defeated)
+      if (killFlashTimer > 0) {
+        killFlashTimer--;
+        ctx.save();
+        ctx.globalAlpha = (killFlashTimer / 15) * 0.25;
+        ctx.fillStyle = '#FFD700';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+
+      // Score popups (world-space floating text, drawn after camera restore)
+      if (scorePopups.length > 0) {
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-cameraX, -cameraY);
+        scorePopups.forEach(p => {
+          const alpha = Math.min(1, p.life / 20);
+          ctx.globalAlpha = alpha;
+          ctx.font = 'bold 13px "JetBrains Mono", monospace';
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 3;
+          ctx.textAlign = 'center';
+          ctx.strokeText(p.text, p.x, p.y);
+          ctx.fillStyle = p.color;
+          ctx.fillText(p.text, p.x, p.y);
+        });
+        ctx.globalAlpha = 1;
+        ctx.textAlign = 'left';
         ctx.restore();
       }
     };
